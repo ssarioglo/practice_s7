@@ -1,0 +1,99 @@
+services:
+  # 1. База данных PostgreSQL
+  pym_db:
+    image: postgres:15-alpine
+    container_name: pym_db
+    environment:
+      POSTGRES_USER: pym_user
+      POSTGRES_PASSWORD: pym_password # Установи свой надежный пароль
+      POSTGRES_DB: pym_database
+    ports:
+      - "9803:5432" # Порт наружу для локального подключения (DBeaver/DataGrip)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - pym-network
+    restart: always
+
+  # 2. Графический интерфейс pgAdmin 4
+  pgadmin:
+    image: dpage/pgadmin4:8.5
+    container_name: pym_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@pym.ru # Логин для входа в веб-панель
+      PGADMIN_DEFAULT_PASSWORD: admin_password # Пароль для входа в веб-панель
+    ports:
+      - "5050:80" # Открываем pgAdmin на порту 5050
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - pym-network
+    depends_on:
+      - pym_db
+    restart: always
+
+  # 3. Математический калькулятор (Python)
+  pym-predictor:
+    build: ./pym-predictor
+    container_name: pym-predictor
+    ports:
+      - "9802:9802"
+    networks:
+      - pym-network
+    depends_on:
+      - pym_db
+
+  # 4. Сервис управления данными (Go)
+  pym-data-service:
+    build: ./pym-data-service
+    container_name: pym-data-service
+    ports:
+      - "9801:9801"
+    environment:
+      - DB_HOST=pym_db         # Имя контейнера базы в сети Docker
+      - DB_PORT=5432           # Внутри сети Docker база всегда на порту 5432
+      - DB_USER=pym_user
+      - DB_PASSWORD=pym_password
+      - DB_NAME=pym_database
+      - PREDICTOR_URL=http://pym-predictor:9802 # Адрес Python-сервиса в сети Docker
+    networks:
+      - pym-network
+    depends_on:
+      - pym_db
+      - pym-predictor
+
+  # 5. API Gateway (Java / Spring Boot)
+  pym-gateway:
+    build: ./pym-gateway
+    container_name: pym-gateway
+    ports:
+      - "9800:9800"
+    environment:
+      - DATA_SERVICE_HOST=pym-data-service
+      - DATA_SERVICE_PORT=9801
+    networks:
+      - pym-network
+    depends_on:
+      - pym_db
+      - pym-data-service
+
+  # 6. Пользовательский интерфейс (React)
+  pym-frontend:
+    build: ./pym-frontend
+    container_name: pym-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - pym-network
+    depends_on:
+      - pym-gateway
+    restart: always
+
+volumes:
+  pgdata:
+  pgadmin_data:
+
+networks:
+  pym-network:
+    driver: bridge
