@@ -35,7 +35,9 @@ services:
 
   # калькулятор на питоне
   pym-predictor:
-    build: ./pym-predictor
+    build:
+      context: ./pym-predictor
+      dockerfile: Dockerfile
     container_name: pym-predictor
     ports:
       - "9802:9802"
@@ -43,10 +45,13 @@ services:
       - pym-network
     depends_on:
       - pym_db
+    restart: always
 
   # сервис данных на го
   pym-data-service:
-    build: ./pym-data-service
+    build:
+      context: ./pym-data-service
+      dockerfile: Dockerfile
     container_name: pym-data-service
     ports:
       - "9801:9801"
@@ -62,10 +67,13 @@ services:
     depends_on:
       - pym_db
       - pym-predictor
+    restart: always
 
   # гейтвей на джаве
   pym-gateway:
-    build: ./pym-gateway
+    build:
+      context: ./pym-gateway
+      dockerfile: Dockerfile
     container_name: pym-gateway
     ports:
       - "9800:9800"
@@ -77,10 +85,13 @@ services:
     depends_on:
       - pym_db
       - pym-data-service
+    restart: always
 
   # фронт на реакте
   pym-frontend:
-    build: ..
+    build:
+      context: ./pym-frontend
+      dockerfile: Dockerfile
     container_name: pym-frontend
     ports:
       - "3000:80"

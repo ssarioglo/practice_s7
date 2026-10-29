@@ -35,7 +35,9 @@ services:
 
   # питон сервис для расчета прогноза
   pym-predictor:
-    build: ./PYM/pym-predictor
+    build:
+      context: ./PYM/pym-predictor
+      dockerfile: Dockerfile
     container_name: pym-predictor
     ports:
       - "9802:9802"
@@ -47,7 +49,9 @@ services:
 
   # сервис на го для работы с бд
   pym-data-service:
-    build: ./PYM/pym-data-service
+    build:
+      context: ./PYM/pym-data-service
+      dockerfile: Dockerfile
     container_name: pym-data-service
     ports:
       - "9801:9801"
@@ -67,7 +71,9 @@ services:
 
   # гейтвей на джаве + авторизация
   pym-gateway:
-    build: ./PYM/pym-gateway
+    build:
+      context: ./PYM/pym-gateway
+      dockerfile: Dockerfile
     container_name: pym-gateway
     ports:
       - "9800:9800"
@@ -83,7 +89,9 @@ services:
 
   # фронтенд на реакте + nginx
   pym-frontend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: pym-frontend
     ports:
       - "3000:80"
