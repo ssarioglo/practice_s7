@@ -12,8 +12,6 @@ interface ForecastChartProps {
   onContextMenu?: (point: DailyPoint, coords: { x: number; y: number }) => void;
   hoveredRuleId?: string | null;
   safetyBuffer?: number;
-  isCompact?: boolean;
-  showCompactTooltip?: boolean;
   customHeight?: number;
 }
 
@@ -28,19 +26,13 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   onContextMenu,
   hoveredRuleId,
   safetyBuffer,
-  isCompact = false,
-  showCompactTooltip = false,
-  customHeight,
+  customHeight = 270,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartHeight = customHeight ?? (isCompact ? 120 : 380);
+  const chartHeight = customHeight;
   const [dimensions, setDimensions] = useState({ width: 900, height: chartHeight });
   const [hoveredPoint, setHoveredPoint] = useState<DailyPoint | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
-  const [showClickHint, setShowClickHint] = useState(false);
-  const [mouseCoords, setMouseCoords] = useState({ x: 0, y: 0 });
-  const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastHoveredIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -69,23 +61,22 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     window.addEventListener('resize', updateSize);
     return () => {
       if (resizeObserver) resizeObserver.disconnect();
-      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       window.removeEventListener('resize', updateSize);
     };
   }, [chartHeight]);
 
   if (!points || points.length === 0) {
     return (
-      <div className={`flex items-center justify-center ${isCompact ? 'h-28' : 'h-80'} bg-slate-900 rounded-xl text-slate-400 text-xs`}>
+      <div className="flex items-center justify-center h-64 bg-white border border-gray-300 text-gray-500 text-xs">
         Нет данных для построения графика прогноза
       </div>
     );
   }
 
-  const paddingLeft = isCompact ? 54 : 70;
-  const paddingRight = isCompact ? 22 : 40;
-  const paddingTop = isCompact ? 12 : 30;
-  const paddingBottom = isCompact ? 22 : 45;
+  const paddingLeft = 72;
+  const paddingRight = 24;
+  const paddingTop = 20;
+  const paddingBottom = 34;
 
   const graphWidth = Math.max(dimensions.width - paddingLeft - paddingRight, 100);
   const graphHeight = Math.max(chartHeight - paddingTop - paddingBottom, 50);
@@ -94,7 +85,6 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
   const rawMin = Math.min(...balances, 0);
   const rawMax = Math.max(...balances, 10000);
 
-  // Add 15% headroom
   const minVal = rawMin < 0 ? rawMin * 1.15 : 0;
   const maxVal = rawMax > 0 ? rawMax * 1.15 : 10000;
   const valRange = maxVal - minVal || 1;
@@ -111,7 +101,6 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
 
   const zeroY = getY(0);
 
-  // Stepped trend path (stepAfter)
   const pathPoints: string[] = [];
   const areaPoints: string[] = [];
 
@@ -130,6 +119,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     areaPoints.push(`${nextX},${currY}`);
     areaPoints.push(`${nextX},${nextY}`);
   }
+
   areaPoints.push(`${getX(points.length - 1)},${zeroY}`);
 
   const pathDefinition = `M ${pathPoints.join(' L ')}`;
@@ -154,52 +144,28 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     const target = points[index];
     setHoveredPoint(target);
 
-    // Collision-free tooltip coordinates:
-    // Keep a strict lateral offset from the cursor so it NEVER covers the pointer or data point.
     const relX = e.clientX - rect.left;
     const relY = e.clientY - rect.top;
-    setMouseCoords({ x: relX, y: relY });
 
-    if (lastHoveredIndexRef.current !== index) {
-      lastHoveredIndexRef.current = index;
-      setShowClickHint(false);
-      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = setTimeout(() => {
-        setShowClickHint(true);
-      }, 2000);
-    }
+    const tooltipWidth = 220;
+    const tooltipHeight = 160;
+    const cursorGap = 14;
 
-    const tooltipWidth = 240;
-    const tooltipHeight = isCompact ? 165 : 195;
-    const cursorGap = 16;
-    const marginX = 10;
-    const marginY = 6;
-
-    // Horizontal: prefer placing to the right (+gap). If it exceeds container width, flip to the left (-gap - width).
     let posX: number;
-    if (relX + cursorGap + tooltipWidth <= dimensions.width - marginX) {
+    if (relX + cursorGap + tooltipWidth <= dimensions.width - 10) {
       posX = relX + cursorGap;
     } else {
-      posX = Math.max(marginX, relX - cursorGap - tooltipWidth);
+      posX = Math.max(10, relX - cursorGap - tooltipWidth);
     }
 
-    // Vertical: in compact mode, anchor comfortably near cursor while allowing smooth overflow outside container
-    let posY: number;
-    if (isCompact) {
-      posY = Math.max(4, Math.min(relY - 20, 35));
-    } else {
-      posY = relY - tooltipHeight / 2;
-      posY = Math.max(marginY, Math.min(posY, chartHeight - tooltipHeight - marginY));
-    }
+    let posY = relY - tooltipHeight / 2;
+    posY = Math.max(6, Math.min(posY, chartHeight - tooltipHeight - 6));
 
     setTooltipPos({ x: posX, y: posY });
     if (onHoverPointChange) onHoverPointChange(target);
   };
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    setShowClickHint(false);
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-    // Left-click (primary button) directly selects day or scrolls
     if (e.button === 0 && hoveredPoint && onSelectPoint) {
       onSelectPoint(hoveredPoint);
     }
@@ -210,8 +176,7 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     if (!containerRef.current || points.length === 0 || !onContextMenu) return;
     const rect = containerRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left - paddingLeft;
-    const clampedMouseX = Math.max(0, Math.min(mouseX, graphWidth));
-    const pct = clampedMouseX / graphWidth;
+    const pct = Math.min(Math.max(mouseX / graphWidth, 0), 1);
     const index = Math.min(
       Math.max(Math.round(pct * (points.length - 1)), 0),
       points.length - 1
@@ -222,24 +187,22 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
     }
   };
 
-  // Ticks for Y axis - in compact mode we compress to max 3 key ticks to prevent clutter
-  const tickSteps = isCompact
-    ? (minVal < 0 ? [minVal, 0, maxVal] : [0, maxVal]).filter((v, i, arr) => arr.indexOf(v) === i)
-    : [minVal, minVal / 2, 0, maxVal / 2, maxVal].filter((v, i, arr) => arr.indexOf(v) === i);
+  const tickSteps = [minVal, minVal / 2, 0, maxVal / 2, maxVal].filter(
+    (v, i, arr) => arr.indexOf(v) === i
+  );
 
   return (
     <div
       ref={containerRef}
-      className={`w-full min-w-0 overflow-visible relative z-20 select-none ${hoveredPoint ? 'cursor-pointer' : 'cursor-default'}`}
+      className={`w-full min-w-0 bg-white border border-gray-300 relative z-20 select-none ${
+        hoveredPoint ? 'cursor-pointer' : 'cursor-default'
+      }`}
       style={{ height: `${chartHeight}px` }}
       onMouseMove={handleMouseMove}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onMouseLeave={() => {
         setHoveredPoint(null);
-        setShowClickHint(false);
-        lastHoveredIndexRef.current = null;
-        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
         if (onHoverPointChange) onHoverPointChange(null);
       }}
     >
@@ -248,29 +211,30 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
         height={chartHeight}
         className="w-full block overflow-visible"
       >
-        <defs>
-          <linearGradient id="balanceGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
-          </linearGradient>
-          <linearGradient id="deficitGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.05" />
-            <stop offset="100%" stopColor="#ef4444" stopOpacity="0.25" />
-          </linearGradient>
-        </defs>
+        {/* фон области графика */}
+        <rect
+          x={paddingLeft}
+          y={paddingTop}
+          width={graphWidth}
+          height={graphHeight}
+          fill="#fafafa"
+          stroke="#cccccc"
+          strokeWidth="1"
+        />
 
-        {/* Deficit Zone (Below 0 ₽) */}
+        {/* красная зона ниже нуля */}
         {zeroY < paddingTop + graphHeight && (
           <rect
             x={paddingLeft}
             y={zeroY}
             width={graphWidth}
             height={paddingTop + graphHeight - zeroY}
-            fill="url(#deficitGradient)"
+            fill="#f2dede"
+            opacity="0.55"
           />
         )}
 
-        {/* Horizontal grid lines & labels */}
+        {/* сетка по Y */}
         {tickSteps.map((tick, i) => {
           const y = getY(tick);
           if (y < paddingTop || y > paddingTop + graphHeight) return null;
@@ -281,54 +245,55 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
                 y1={y}
                 x2={dimensions.width - paddingRight}
                 y2={y}
-                stroke={tick === 0 ? '#ef4444' : 'rgba(148, 163, 184, 0.15)'}
+                stroke={tick === 0 ? '#a94442' : '#dcdcdc'}
                 strokeWidth={tick === 0 ? 1.5 : 1}
-                strokeDasharray={tick === 0 ? '4 3' : '3 3'}
+                strokeDasharray={tick === 0 ? '4 3' : undefined}
               />
               <text
-                x={paddingLeft - (isCompact ? 6 : 10)}
-                y={y + (isCompact ? 3 : 4)}
-                fill={tick === 0 ? '#ef4444' : '#94a3b8'}
-                fontSize={isCompact ? '9' : '11'}
+                x={paddingLeft - 8}
+                y={y + 4}
+                fill={tick === 0 ? '#a94442' : '#555555'}
+                fontSize="10"
                 textAnchor="end"
                 fontFamily="monospace"
                 fontWeight={tick === 0 ? 'bold' : 'normal'}
               >
-                {`${(tick / 1000).toFixed(0)}k ₽`}
+                {tick === 0
+                  ? '0 ₽'
+                  : Math.abs(tick) >= 1000000
+                  ? `${(tick / 1000000).toFixed(1)} млн`
+                  : `${(tick / 1000).toFixed(0)} тыс.`}
               </text>
             </g>
           );
         })}
 
-        {/* X Axis dates */}
+        {/* подписи дат снизу */}
         {points.map((p, i) => {
-          const interval = isCompact
-            ? points.length <= 35
-              ? 7
-              : points.length <= 90
-              ? 15
-              : 30
-            : points.length <= 35
-            ? 5
-            : points.length <= 90
-            ? 10
-            : 20;
+          const interval = points.length <= 35 ? 5 : points.length <= 90 ? 10 : 20;
           if (i % interval === 0 || i === points.length - 1) {
             const x = getX(i);
             return (
               <g key={i}>
                 <line
                   x1={x}
+                  y1={paddingTop}
+                  x2={x}
+                  y2={chartHeight - paddingBottom}
+                  stroke="#eeeeee"
+                />
+                <line
+                  x1={x}
                   y1={chartHeight - paddingBottom}
                   x2={x}
-                  y2={chartHeight - paddingBottom + (isCompact ? 3 : 5)}
-                  stroke="rgba(148, 163, 184, 0.3)"
+                  y2={chartHeight - paddingBottom + 4}
+                  stroke="#888888"
                 />
                 <text
                   x={x}
-                  y={chartHeight - paddingBottom + (isCompact ? 13 : 20)}
-                  fill="#94a3b8"
-                  fontSize={isCompact ? '8.5' : '10'}
+                  y={chartHeight - paddingBottom + 16}
+                  fill="#444444"
+                  fontSize="10"
                   textAnchor="middle"
                 >
                   {p.formattedDate}
@@ -339,60 +304,45 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
           return null;
         })}
 
-        {/* Area fill */}
-        <path d={areaDefinition} fill="url(#balanceGradient)" />
+        {/* заливка под линией */}
+        <path d={areaDefinition} fill="#d9edf7" opacity="0.5" />
 
-        {/* 0 ₽ Cash Gap Barrier Label */}
-        {zeroY >= paddingTop && zeroY <= paddingTop + graphHeight && (
-          <text
-            x={dimensions.width - paddingRight - 8}
-            y={zeroY - (isCompact ? 3 : 6)}
-            fill="#ef4444"
-            fontSize={isCompact ? '8.5' : '10'}
-            fontWeight="bold"
-            textAnchor="end"
-          >
-            {isCompact ? '0 ₽ Limit' : '⚠️ CASH GAP LIMIT (0 ₽)'}
-          </text>
-        )}
+        {/* резерв если задан */}
+        {safetyBuffer &&
+          safetyBuffer > 0 &&
+          (() => {
+            const bufferY = getY(safetyBuffer);
+            if (bufferY >= paddingTop && bufferY <= paddingTop + graphHeight) {
+              return (
+                <g>
+                  <line
+                    x1={paddingLeft}
+                    y1={bufferY}
+                    x2={dimensions.width - paddingRight}
+                    y2={bufferY}
+                    stroke="#8a6d3b"
+                    strokeWidth="1"
+                    strokeDasharray="4 4"
+                  />
+                  <text
+                    x={dimensions.width - paddingRight - 4}
+                    y={bufferY - 4}
+                    fill="#8a6d3b"
+                    fontSize="9.5"
+                    textAnchor="end"
+                  >
+                    {`Резерв: ${(safetyBuffer / 1000).toFixed(0)} тыс. ₽`}
+                  </text>
+                </g>
+              );
+            }
+            return null;
+          })()}
 
-        {/* Optional Safety Buffer Threshold */}
-        {safetyBuffer && safetyBuffer > 0 && (() => {
-          const bufferY = getY(safetyBuffer);
-          if (bufferY >= paddingTop && bufferY <= paddingTop + graphHeight) {
-            return (
-              <g>
-                <line
-                  x1={paddingLeft}
-                  y1={bufferY}
-                  x2={dimensions.width - paddingRight}
-                  y2={bufferY}
-                  stroke="#f59e0b"
-                  strokeWidth="1.2"
-                  strokeDasharray="4 4"
-                  opacity={0.8}
-                />
-                <text
-                  x={dimensions.width - paddingRight - 8}
-                  y={bufferY - (isCompact ? 3 : 5)}
-                  fill="#f59e0b"
-                  fontSize={isCompact ? '8' : '9.5'}
-                  fontWeight="bold"
-                  textAnchor="end"
-                >
-                  {isCompact
-                    ? `БУФЕР (${(safetyBuffer / 1000).toFixed(0)}k ₽)`
-                    : `🛡️ БУФЕР БЕЗОПАСНОСТИ (${(safetyBuffer / 1000).toFixed(0)}k ₽)`}
-                </text>
-              </g>
-            );
-          }
-          return null;
-        })()}
-
-        {/* Step Transition Impulse Markers for daily transactions */}
+        {/* точки в дни когда были операции */}
         {points.map((p, i) => {
           if (p.transactions.length === 0) return null;
+
           const cx = getX(i);
           const cy = getY(p.closingBalance);
 
@@ -400,7 +350,6 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
           const expenses = p.transactions.filter((tx) => tx.type === 'EXPENSE');
           const hasIncome = incomes.length > 0;
           const hasExpense = expenses.length > 0;
-          const isMixed = hasIncome && hasExpense;
 
           const isIncomeHovered = Boolean(
             hoveredRuleId && incomes.some((tx) => tx.ruleId === hoveredRuleId)
@@ -408,303 +357,42 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
           const isExpenseHovered = Boolean(
             hoveredRuleId && expenses.some((tx) => tx.ruleId === hoveredRuleId)
           );
-          const hoveredIncomeTx = hoveredRuleId
-            ? incomes.find((tx) => tx.ruleId === hoveredRuleId)
-            : undefined;
-          const hoveredExpenseTx = hoveredRuleId
-            ? expenses.find((tx) => tx.ruleId === hoveredRuleId)
-            : undefined;
           const isAnyHovered = isIncomeHovered || isExpenseHovered;
-
-          // Clamped stem tip coordinates to stay within chart padding
-          const incomeSpikeLength = isCompact
-            ? (isIncomeHovered ? 16 : 10)
-            : (isIncomeHovered ? 28 : 22);
-          const incomeTargetY = Math.max(paddingTop + (isCompact ? 4 : 8), cy - incomeSpikeLength);
-
-          const expenseSpikeLength = isCompact
-            ? (isExpenseHovered ? 16 : 10)
-            : (isExpenseHovered ? 28 : 22);
-          const expenseTargetY = Math.min(
-            chartHeight - paddingBottom - (isCompact ? 4 : 8),
-            cy + expenseSpikeLength
-          );
 
           return (
             <g key={i}>
-              {/* Vertical guideline when this day contains the hovered rule */}
               {isAnyHovered && (
                 <line
                   x1={cx}
                   y1={paddingTop}
                   x2={cx}
                   y2={chartHeight - paddingBottom}
-                  stroke="#3b82f6"
+                  stroke="#337ab7"
                   strokeWidth="1.5"
-                  strokeDasharray="3 3"
-                  opacity={0.7}
+                  strokeDasharray="2 2"
                 />
               )}
-
-              {/* UPWARD GREEN STEM: Incomes */}
-              {hasIncome && (
-                <g>
-                  {/* Outer pulse aura when hovered from rules table */}
-                  {isIncomeHovered && (
-                    <circle
-                      cx={cx}
-                      cy={incomeTargetY}
-                      r={11}
-                      fill="none"
-                      stroke="#16a34a"
-                      strokeWidth={1.5}
-                      strokeOpacity={0.6}
-                    />
-                  )}
-
-                  {/* Upward stem line */}
-                  <line
-                    x1={cx}
-                    y1={cy}
-                    x2={cx}
-                    y2={incomeTargetY}
-                    stroke={isIncomeHovered ? '#15803d' : '#22c55e'}
-                    strokeWidth={isIncomeHovered ? 3.5 : 2}
-                    strokeLinecap="round"
-                  />
-
-                  {/* Leaf Tip: Dot for single income, badge with counter for multiple */}
-                  {incomes.length === 1 ? (
-                    <circle
-                      cx={cx}
-                      cy={incomeTargetY}
-                      r={isIncomeHovered ? (isCompact ? 4.5 : 5.5) : (isCompact ? 2.5 : 3.5)}
-                      fill={isIncomeHovered ? '#15803d' : '#22c55e'}
-                      stroke={isIncomeHovered ? '#ffffff' : 'none'}
-                      strokeWidth={isIncomeHovered ? 2 : 0}
-                    />
-                  ) : (
-                    <g className="pointer-events-none select-none">
-                      <circle
-                        cx={cx}
-                        cy={incomeTargetY}
-                        r={isIncomeHovered ? (isCompact ? 6 : 7.5) : (isCompact ? 4.5 : 6)}
-                        fill={isIncomeHovered ? '#15803d' : '#22c55e'}
-                        stroke="#ffffff"
-                        strokeWidth={1.5}
-                      />
-                      <text
-                        x={cx}
-                        y={incomeTargetY}
-                        fill="#ffffff"
-                        fontSize={isCompact ? '7' : '8'}
-                        fontWeight="bold"
-                        fontFamily="monospace"
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                      >
-                        {incomes.length}
-                      </text>
-                    </g>
-                  )}
-
-                  {/* Floating amount label when hovered from table */}
-                  {isIncomeHovered && hoveredIncomeTx && (
-                    <g className="pointer-events-none select-none">
-                      <rect
-                        x={cx - 60}
-                        y={incomeTargetY - 26}
-                        width={120}
-                        height={18}
-                        rx={4}
-                        fill="#0f172a"
-                        fillOpacity={0.92}
-                        stroke="#22c55e"
-                        strokeWidth={1}
-                      />
-                      <text
-                        x={cx}
-                        y={incomeTargetY - 14}
-                        fill="#4ade80"
-                        fontSize="9"
-                        fontWeight="bold"
-                        textAnchor="middle"
-                      >
-                        +{hoveredIncomeTx.amount.toLocaleString('ru-RU')} ₽
-                      </text>
-                    </g>
-                  )}
-                </g>
-              )}
-
-              {/* DOWNWARD RED STEM: Expenses */}
-              {hasExpense && (
-                <g>
-                  {/* Outer pulse aura when hovered from rules table */}
-                  {isExpenseHovered && (
-                    <circle
-                      cx={cx}
-                      cy={expenseTargetY}
-                      r={11}
-                      fill="none"
-                      stroke="#dc2626"
-                      strokeWidth={1.5}
-                      strokeOpacity={0.6}
-                    />
-                  )}
-
-                  {/* Downward stem line */}
-                  <line
-                    x1={cx}
-                    y1={cy}
-                    x2={cx}
-                    y2={expenseTargetY}
-                    stroke={isExpenseHovered ? '#991b1b' : '#ef4444'}
-                    strokeWidth={isExpenseHovered ? 3.5 : 2}
-                    strokeLinecap="round"
-                  />
-
-                  {/* Leaf Tip: Dot for single expense, badge with counter for multiple */}
-                  {expenses.length === 1 ? (
-                    <circle
-                      cx={cx}
-                      cy={expenseTargetY}
-                      r={isExpenseHovered ? (isCompact ? 4.5 : 5.5) : (isCompact ? 2.5 : 3.5)}
-                      fill={isExpenseHovered ? '#991b1b' : '#ef4444'}
-                      stroke={isExpenseHovered ? '#ffffff' : 'none'}
-                      strokeWidth={isExpenseHovered ? 2 : 0}
-                    />
-                  ) : (
-                    <g className="pointer-events-none select-none">
-                      <circle
-                        cx={cx}
-                        cy={expenseTargetY}
-                        r={isExpenseHovered ? (isCompact ? 6 : 7.5) : (isCompact ? 4.5 : 6)}
-                        fill={isExpenseHovered ? '#991b1b' : '#ef4444'}
-                        stroke="#ffffff"
-                        strokeWidth={1.5}
-                      />
-                      <text
-                        x={cx}
-                        y={expenseTargetY}
-                        fill="#ffffff"
-                        fontSize={isCompact ? '7' : '8'}
-                        fontWeight="bold"
-                        fontFamily="monospace"
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                      >
-                        {expenses.length}
-                      </text>
-                    </g>
-                  )}
-
-                  {/* Floating amount label when hovered from table */}
-                  {isExpenseHovered && hoveredExpenseTx && (
-                    <g className="pointer-events-none select-none">
-                      <rect
-                        x={cx - 60}
-                        y={expenseTargetY + 10}
-                        width={120}
-                        height={18}
-                        rx={4}
-                        fill="#0f172a"
-                        fillOpacity={0.92}
-                        stroke="#ef4444"
-                        strokeWidth={1}
-                      />
-                      <text
-                        x={cx}
-                        y={expenseTargetY + 22}
-                        fill="#f87171"
-                        fontSize="9"
-                        fontWeight="bold"
-                        textAnchor="middle"
-                      >
-                        -{hoveredExpenseTx.amount.toLocaleString('ru-RU')} ₽
-                      </text>
-                    </g>
-                  )}
-                </g>
-              )}
-
-              {/* Step Junction Node at (cx, cy) on the step curve */}
-              {isMixed ? (
-                // Two-tone split beacon node for mixed days (Income + Expense)
-                <g className="pointer-events-none">
-                  {/* Upper green semi-circle */}
-                  <path
-                    d={`M ${cx - (isCompact ? 3.5 : 4.5)} ${cy} A ${isCompact ? 3.5 : 4.5} ${isCompact ? 3.5 : 4.5} 0 0 1 ${cx + (isCompact ? 3.5 : 4.5)} ${cy}`}
-                    fill="none"
-                    stroke="#22c55e"
-                    strokeWidth={isCompact ? 2 : 2.5}
-                  />
-                  {/* Lower red semi-circle */}
-                  <path
-                    d={`M ${cx - (isCompact ? 3.5 : 4.5)} ${cy} A ${isCompact ? 3.5 : 4.5} ${isCompact ? 3.5 : 4.5} 0 0 0 ${cx + (isCompact ? 3.5 : 4.5)} ${cy}`}
-                    fill="none"
-                    stroke="#ef4444"
-                    strokeWidth={isCompact ? 2 : 2.5}
-                  />
-                  {/* Crisp center core */}
-                  <circle cx={cx} cy={cy} r={isCompact ? 1.5 : 2} fill="#ffffff" />
-                </g>
-              ) : (
-                // Clean anchor dot for single-direction flow days
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={isCompact ? 2 : 2.5}
-                  fill={hasIncome ? '#22c55e' : '#ef4444'}
-                  stroke="#ffffff"
-                  strokeWidth={1}
-                  className="pointer-events-none"
-                />
-              )}
+              <circle
+                cx={cx}
+                cy={cy}
+                r={isAnyHovered ? 4.5 : 3}
+                fill={hasIncome && !hasExpense ? '#3c763d' : '#a94442'}
+                stroke="#ffffff"
+                strokeWidth={1}
+              />
             </g>
           );
         })}
 
-        {/* Main trend line (stepAfter) */}
+        {/* сама синяя линия баланса */}
         <path
           d={pathDefinition}
           fill="none"
-          stroke="#3b82f6"
-          strokeWidth={isCompact ? '2.2' : '3'}
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          stroke="#337ab7"
+          strokeWidth="2"
         />
 
-        {/* Active context menu target point marker */}
-        {contextPoint && (
-          (() => {
-            const cx = getX(contextPoint.dayIndex);
-            const cy = getY(contextPoint.closingBalance);
-            return (
-              <g>
-                <line
-                  x1={cx}
-                  y1={paddingTop}
-                  x2={cx}
-                  y2={chartHeight - paddingBottom}
-                  stroke="#a855f7"
-                  strokeWidth="2"
-                  strokeDasharray="4 2"
-                />
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={isCompact ? '5.5' : '7'}
-                  fill="#a855f7"
-                  stroke="#ffffff"
-                  strokeWidth="2"
-                />
-              </g>
-            );
-          })()
-        )}
-
-        {/* Active hovered point cursor (synced with calendar table rows and chart hover) */}
+        {/* вертикальная линия при наведении мышки */}
         {(() => {
           const pt =
             hoveredPoint ||
@@ -721,144 +409,67 @@ export const ForecastChart: React.FC<ForecastChartProps> = ({
                 y1={paddingTop}
                 x2={hx}
                 y2={chartHeight - paddingBottom}
-                stroke="#38bdf8"
-                strokeWidth="1.5"
+                stroke="#333333"
+                strokeWidth="1"
                 strokeDasharray="3 3"
-                opacity={0.9}
               />
-              <circle
-                cx={hx}
-                cy={hy}
-                r={isCompact ? 5 : 6}
-                fill="#06b6d4"
-                stroke="#ffffff"
-                strokeWidth={2.5}
-              />
+              <circle cx={hx} cy={hy} r={4.5} fill="#337ab7" stroke="#ffffff" strokeWidth={1.5} />
             </g>
           );
         })()}
       </svg>
 
-      {/* Floating 2-second hover hint badge near cursor (placed opposite to main tooltip to avoid overlapping) */}
-      {showClickHint && hoveredPoint && (() => {
-        const hintWidth = 320;
-        const isTooltipVisible = !isCompact || showCompactTooltip;
-        const isTooltipOnRight = tooltipPos.x >= mouseCoords.x;
-
-        let hintLeft: number;
-        if (isTooltipVisible) {
-          if (isTooltipOnRight) {
-            // Main tooltip is on right -> place hint on left if space permits
-            hintLeft = mouseCoords.x - 16 - hintWidth >= 8
-              ? mouseCoords.x - 16 - hintWidth
-              : Math.max(8, mouseCoords.x - 18);
-          } else {
-            // Main tooltip is on left -> place hint on right if space permits
-            hintLeft = mouseCoords.x + 16 + hintWidth <= dimensions.width - 8
-              ? mouseCoords.x + 16
-              : Math.max(8, mouseCoords.x - 18);
-          }
-        } else {
-          hintLeft = mouseCoords.x + 18 + hintWidth <= dimensions.width
-            ? mouseCoords.x + 18
-            : Math.max(8, mouseCoords.x - 18 - hintWidth);
-        }
-
-        const hintTop = isCompact
-          ? -26 // In compact mode dock above the plot line so it never clashes with the tooltip below
-          : (mouseCoords.y >= 36 ? mouseCoords.y - 32 : mouseCoords.y + 16);
-
-        return (
-          <div
-            className="absolute z-50 pointer-events-none px-2.5 py-1 rounded-md bg-slate-900/95 text-slate-100 text-[11px] font-medium border border-blue-500/40 shadow-xl flex items-center gap-1.5 whitespace-nowrap animate-in fade-in duration-200 backdrop-blur-xs select-none"
-            style={{
-              left: `${hintLeft}px`,
-              top: `${hintTop}px`,
-            }}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0"></span>
-            <span>Нажмите на дату в графике для быстрой прокрутки к ней</span>
-          </div>
-        );
-      })()}
-
-      {/* Hover Tooltip with Data Enrichment (can be disabled in compact view to avoid duplicating rules list) */}
-      {hoveredPoint && (!isCompact || showCompactTooltip) && (
+      {/* всплывашка с остатком на день */}
+      {hoveredPoint && (
         <div
-          className="absolute p-3 rounded-lg border text-white shadow-2xl pointer-events-none z-50 select-none"
+          className="absolute p-2.5 bg-white border border-gray-500 text-gray-800 shadow-xs pointer-events-none z-50 select-none text-xs"
           style={{
             left: `${tooltipPos.x}px`,
             top: `${tooltipPos.y}px`,
-            backgroundColor: 'rgba(15, 23, 42, 0.96)',
-            borderColor: hoveredPoint.isCashGap ? 'rgba(239, 68, 68, 0.6)' : 'rgba(59, 130, 246, 0.4)',
-            backdropFilter: 'blur(12px)',
-            width: '240px',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+            width: '220px',
           }}
         >
-          <div className="flex justify-between items-center text-xs text-slate-400 mb-1">
-            <span>{hoveredPoint.date} ({hoveredPoint.dayOfWeek})</span>
+          <div className="flex justify-between items-center font-bold border-b border-gray-300 pb-1 mb-1">
+            <span>
+              {hoveredPoint.date} ({hoveredPoint.dayOfWeek})
+            </span>
             {hoveredPoint.isCashGap && (
-              <span className="text-red-400 font-bold bg-red-950/80 px-1.5 py-0.5 rounded text-[10px]">
-                РАЗРЫВ
+              <span className="text-[#a94442] font-bold text-[10px]">
+                [РАЗРЫВ]
               </span>
             )}
           </div>
           <div
-            className={`text-lg font-bold border-b pb-1 mb-2 ${
-              hoveredPoint.closingBalance < 0 ? 'text-red-400' : 'text-slate-100'
+            className={`text-sm font-bold font-mono mb-1.5 ${
+              hoveredPoint.closingBalance < 0 ? 'text-[#a94442]' : 'text-gray-900'
             }`}
-            style={{ borderColor: 'rgba(255,255,255,0.08)' }}
           >
-            {hoveredPoint.closingBalance.toLocaleString('ru-RU')} ₽
+            Остаток: {hoveredPoint.closingBalance.toLocaleString('ru-RU')} ₽
           </div>
 
           {hoveredPoint.transactions.length > 0 ? (
-            <div className="space-y-1 text-xs">
-              <div className="text-[10px] uppercase font-bold text-slate-400">
-                События дня:
-              </div>
-              {(isCompact ? hoveredPoint.transactions.slice(0, 3) : hoveredPoint.transactions).map((tx, idx) => (
+            <div className="space-y-0.5 text-[11px] border-t border-gray-200 pt-1">
+              {hoveredPoint.transactions.slice(0, 4).map((tx, idx) => (
                 <div key={idx} className="flex justify-between items-center">
-                  <span className="truncate max-w-[130px] text-slate-300">
-                    {tx.title}
-                  </span>
+                  <span className="truncate max-w-[120px] text-gray-700">{tx.title}</span>
                   <span
-                    className={`font-semibold ${
-                      tx.type === 'INCOME' ? 'text-emerald-400' : 'text-rose-400'
+                    className={`font-mono font-bold ${
+                      tx.type === 'INCOME' ? 'text-[#3c763d]' : 'text-[#a94442]'
                     }`}
                   >
                     {tx.type === 'INCOME' ? '+' : '-'}
-                    {tx.amount.toLocaleString('ru-RU')} ₽
+                    {tx.amount.toLocaleString('ru-RU')}
                   </span>
                 </div>
               ))}
-              {isCompact && hoveredPoint.transactions.length > 3 && (
-                <div className="text-[10px] text-slate-400 italic text-right">
-                  + еще {hoveredPoint.transactions.length - 3} (ЛКМ срез)
-                </div>
-              )}
             </div>
           ) : (
-            <div className="text-xs text-slate-500 italic">
-              Без транзакций (баланс стабилен)
-            </div>
+            <div className="text-[11px] text-gray-500">Операций нет</div>
           )}
 
-          {/* Информационные подсказки ЛКМ и ПКМ */}
-          <div className="pt-2 mt-2 border-t border-slate-700/60 flex items-center justify-between text-[11px]">
-            <span className="flex items-center gap-1.5" title="Нажмите левую кнопку мыши для подробного среза дня">
-              <span className="px-1.5 py-0.5 rounded bg-blue-500/25 text-blue-300 font-bold border border-blue-500/40 text-[10px]">
-                ЛКМ
-              </span>
-              <span className="text-slate-300">срез дня</span>
-            </span>
-            <span className="flex items-center gap-1.5" title="Нажмите правую кнопку мыши для контекстного меню">
-              <span className="px-1.5 py-0.5 rounded bg-purple-500/25 text-purple-300 font-bold border border-purple-500/40 text-[10px]">
-                ПКМ
-              </span>
-              <span className="text-slate-300">меню</span>
-            </span>
+          <div className="pt-1 mt-1 border-t border-gray-200 flex justify-between text-[10px] text-gray-500">
+            <span>ЛКМ: детали дня</span>
+            <span>ПКМ: меню</span>
           </div>
         </div>
       )}

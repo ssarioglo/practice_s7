@@ -1,145 +1,71 @@
 import React, { useEffect, useRef } from 'react';
-import { DailyPoint } from '../types/finance.ts';
-import { PlusCircle, ArrowDownRight, ArrowUpRight, BarChart2, X, Calendar } from 'lucide-react';
 
-export interface ContextMenuProps {
+interface ContextMenuProps {
   x: number;
   y: number;
-  point: DailyPoint;
+  date: string;
   onClose: () => void;
-  onAddRule: (point: DailyPoint, type?: 'INCOME' | 'EXPENSE') => void;
-  onViewDaySlice: (point: DailyPoint) => void;
+  onAddIncome: () => void;
+  onAddExpense: () => void;
+  onInspectDay: () => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
   x,
   y,
-  point,
+  date,
   onClose,
-  onAddRule,
-  onViewDaySlice,
+  onAddIncome,
+  onAddExpense,
+  onInspectDay,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         onClose();
       }
     };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose]);
 
-  // Viewport bounds clamping
-  const menuWidth = 260;
-  const menuHeight = 220;
-  const clampedX = Math.min(x, window.innerWidth - menuWidth - 10);
-  const clampedY = Math.min(y, window.innerHeight - menuHeight - 10);
+  const style = {
+    top: Math.min(y, window.innerHeight - 180),
+    left: Math.min(x, window.innerWidth - 220),
+  };
 
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl shadow-2xl py-1.5 text-slate-200 text-xs select-none w-64 animate-in fade-in zoom-in-95 duration-100"
-      style={{
-        left: `${clampedX}px`,
-        top: `${clampedY}px`,
-      }}
+      style={style}
+      className="fixed z-50 w-52 bg-white border border-gray-500 shadow-md text-xs"
     >
-      {/* Header with target point date & balance */}
-      <div className="px-3 py-2 border-b border-slate-800 flex justify-between items-center bg-slate-950/40">
-        <div className="flex items-center gap-1.5 font-medium text-slate-300">
-          <Calendar size={13} className="text-blue-400" />
-          <span>{point.date}</span>
-          <span className="text-[10px] text-slate-500 font-normal">({point.dayOfWeek})</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`font-mono font-bold text-[11px] ${
-              point.closingBalance < 0 ? 'text-rose-400' : 'text-emerald-400'
-            }`}
-          >
-            {point.closingBalance.toLocaleString('ru-RU')} ₽
-          </span>
-          <button
-            onClick={onClose}
-            className="text-slate-500 hover:text-slate-300 transition"
-          >
-            <X size={13} />
-          </button>
-        </div>
+      <div className="px-2.5 py-1.5 bg-[#eeeeee] border-b border-gray-400 font-bold text-gray-800">
+        Дата: {date}
       </div>
-
-      {/* Menu Actions */}
-      <div className="p-1 space-y-0.5">
+      <div className="divide-y divide-gray-200">
         <button
-          onClick={() => {
-            onAddRule(point);
-            onClose();
-          }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left hover:bg-slate-800 text-slate-200 transition group"
+          type="button"
+          onClick={onAddIncome}
+          className="w-full px-2.5 py-1.5 text-left text-gray-800 hover:bg-[#f5f5f5] font-medium block"
         >
-          <PlusCircle size={15} className="text-blue-400 group-hover:scale-110 transition" />
-          <div className="flex-1">
-            <div className="font-medium">Добавить правило...</div>
-            <div className="text-[10px] text-slate-400">Форма с автоподстановкой даты</div>
-          </div>
+          [+] Добавить Приход
         </button>
-
         <button
-          onClick={() => {
-            onAddRule(point, 'EXPENSE');
-            onClose();
-          }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left hover:bg-slate-800 text-slate-200 transition group"
+          type="button"
+          onClick={onAddExpense}
+          className="w-full px-2.5 py-1.5 text-left text-gray-800 hover:bg-[#f5f5f5] font-medium block"
         >
-          <ArrowDownRight size={15} className="text-rose-400 group-hover:scale-110 transition" />
-          <div className="flex-1">
-            <div className="font-medium text-rose-300">Добавить расход (-)</div>
-            <div className="text-[10px] text-slate-400">Списание с {point.formattedDate}</div>
-          </div>
+          [-] Добавить Списание
         </button>
-
         <button
-          onClick={() => {
-            onAddRule(point, 'INCOME');
-            onClose();
-          }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left hover:bg-slate-800 text-slate-200 transition group"
+          type="button"
+          onClick={onInspectDay}
+          className="w-full px-2.5 py-1.5 text-left text-[#337ab7] hover:bg-[#f5f5f5] font-bold block"
         >
-          <ArrowUpRight size={15} className="text-emerald-400 group-hover:scale-110 transition" />
-          <div className="flex-1">
-            <div className="font-medium text-emerald-300">Добавить доход (+)</div>
-            <div className="text-[10px] text-slate-400">Поступление на {point.formattedDate}</div>
-          </div>
-        </button>
-
-        <div className="h-px bg-slate-800 my-1" />
-
-        <button
-          onClick={() => {
-            onViewDaySlice(point);
-            onClose();
-          }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left hover:bg-slate-800 text-slate-200 transition group"
-        >
-          <BarChart2 size={15} className="text-cyan-400 group-hover:scale-110 transition" />
-          <div className="flex-1">
-            <div className="font-medium text-cyan-300">Показать срез баланса</div>
-            <div className="text-[10px] text-slate-400">Детализация транзакций дня</div>
-          </div>
+          [=] Подробная выписка за день
         </button>
       </div>
     </div>

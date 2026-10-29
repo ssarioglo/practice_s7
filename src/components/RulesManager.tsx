@@ -1,17 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { TransactionRule, TransactionType, RecurrenceType, DailyPoint } from '../types/finance.ts';
+import React, { useState, useMemo } from 'react';
 import {
-  Plus,
-  Trash2,
-  Calendar,
-  Repeat,
-  ArrowUpRight,
-  ArrowDownRight,
-  Tag,
-  Pencil,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react';
+  TransactionRule,
+  TransactionType,
+  DailyPoint,
+  Counterparty,
+  CounterpartyType,
+} from '../types/finance.ts';
+import {
+  isRuleArchived,
+  formatRecurrenceLabel,
+  formatCategoryLabel,
+} from '../engine/forecast.ts';
+import { RuleModal } from './RuleModal.tsx';
 
 interface RulesManagerProps {
   rules: TransactionRule[];
@@ -28,9 +28,29 @@ interface RulesManagerProps {
   defaultDate?: string;
   forecastStartDate?: string;
   forecastEndDate?: string;
-  isCollapsed?: boolean;
-  onToggleCollapse?: () => void;
+  isFullPage?: boolean;
+  counterparties?: Counterparty[];
+  onAddCounterparty?: (cp: Omit<Counterparty, 'id'>) => Counterparty;
+  onUpdateCounterparty?: (cp: Counterparty) => void;
+  onDeleteCounterparty?: (id: string) => void;
 }
+
+const formatCounterpartyType = (t: CounterpartyType): string => {
+  switch (t) {
+    case 'CLIENT':
+      return 'Заказчик / Плательщик';
+    case 'VENDOR':
+      return 'Поставщик / Подрядчик';
+    case 'BANK':
+      return 'Банк / Эквайринг';
+    case 'TAX':
+      return 'Госорган / ФНС';
+    case 'INTERNAL':
+      return 'Внутренний реестр';
+    default:
+      return t;
+  }
+};
 
 export const RulesManager: React.FC<RulesManagerProps> = ({
   rules,
@@ -45,12 +65,30 @@ export const RulesManager: React.FC<RulesManagerProps> = ({
   hoveredRuleId,
   onHoverRuleChange,
   defaultDate = '2026-10-24',
-  forecastStartDate,
+  forecastStartDate = '2026-10-24',
   forecastEndDate,
-  isCollapsed = false,
-  onToggleCollapse,
+  isFullPage = false,
+  counterparties = [],
+  onAddCounterparty,
+  onUpdateCounterparty,
+  onDeleteCounterparty,
 }) => {
   const [localModalOpen, setLocalModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<TransactionRule | null>(null);
+
+  const [subTab, setSubTab] = useState<'rules' | 'counterparties'>('rules');
+  const [showArchived, setShowArchived] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [flowFilter, setFlowFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
+
+  const [isAddingCp, setIsAddingCp] = useState(false);
+  const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
+  const [cpName, setCpName] = useState('');
+  const [cpInn, setCpInn] = useState('');
+  const [cpType, setCpType] = useState<CounterpartyType>('VENDOR');
+  const [cpContract, setCpContract] = useState('');
+  const [cpAccount, setCpAccount] = useState('');
+
   const showModal = isOpenModal || localModalOpen;
   const setShowModal = (open: boolean) => {
     setLocalModalOpen(open);
@@ -60,489 +98,503 @@ export const RulesManager: React.FC<RulesManagerProps> = ({
     }
   };
 
-  const [editingRule, setEditingRule] = useState<TransactionRule | null>(null);
-
-  const [title, setTitle] = useState('');
-  const [amount, setAmount] = useState('');
-  const [type, setType] = useState<TransactionType>('EXPENSE');
-  const [recurrence, setRecurrence] = useState<RecurrenceType>('ONCE');
-  const [category, setCategory] = useState('COMMON');
-  const [date, setDate] = useState(() => defaultDate || '2026-10-24');
-  const [dayOfMonth, setDayOfMonth] = useState(() => {
-    const d = defaultDate ? parseInt(defaultDate.split('-')[2] || '24', 10) : 24;
-    return String(d);
-  });
-  const [endDate, setEndDate] = useState('');
-
-  useEffect(() => {
+  React.useEffect(() => {
     if (prefillData && !editingRule) {
-      if (prefillData.date) {
-        setDate(prefillData.date);
-        const day = parseInt(prefillData.date.split('-')[2] || '1', 10);
-        setDayOfMonth(String(day));
-        setRecurrence('ONCE');
-      }
-      if (prefillData.type) {
-        setType(prefillData.type);
-      }
-      if (prefillData.title) {
-        setTitle(prefillData.title);
-      }
       setLocalModalOpen(true);
     }
   }, [prefillData, editingRule]);
 
   const handleOpenAddModal = () => {
     setEditingRule(null);
-    setTitle('');
-    setAmount('');
-    setType('EXPENSE');
-    setRecurrence('ONCE');
-    setCategory('COMMON');
-    const initialDate = defaultDate || '2026-10-24';
-    setDate(initialDate);
-    const day = parseInt(initialDate.split('-')[2] || '24', 10);
-    setDayOfMonth(String(day));
-    setEndDate('');
     setShowModal(true);
   };
 
   const handleStartEdit = (rule: TransactionRule) => {
     setEditingRule(rule);
-    setTitle(rule.title);
-    setAmount(String(rule.amount));
-    setType(rule.type);
-    setRecurrence(rule.recurrence);
-    setCategory(rule.category || 'COMMON');
-    setDate(rule.date || new Date().toISOString().split('T')[0]);
-    setDayOfMonth(String(rule.dayOfMonth || 10));
-    setEndDate(rule.endDate || '');
     setShowModal(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsedAmount = Math.abs(parseFloat(amount) || 0);
-    if (!title || parsedAmount <= 0) return;
-
-    if (editingRule && onUpdateRule) {
-      onUpdateRule({
-        ...editingRule,
-        title,
-        amount: parsedAmount,
-        type,
-        recurrence,
-        category,
-        date: recurrence === 'ONCE' ? date : undefined,
-        dayOfMonth: recurrence === 'RECURRING' ? parseInt(dayOfMonth, 10) : undefined,
-        endDate: recurrence === 'RECURRING' && endDate ? endDate : undefined,
-      });
+  const handleSaveFromModal = (ruleData: Omit<TransactionRule, 'id'>, existingId?: string) => {
+    if (existingId && onUpdateRule) {
+      onUpdateRule({ ...ruleData, id: existingId });
     } else {
-      onAddRule({
-        title,
-        amount: parsedAmount,
-        type,
-        recurrence,
-        category,
-        source: 'MANUAL',
-        date: recurrence === 'ONCE' ? date : undefined,
-        dayOfMonth: recurrence === 'RECURRING' ? parseInt(dayOfMonth, 10) : undefined,
-        endDate: recurrence === 'RECURRING' && endDate ? endDate : undefined,
-        active: true,
-      });
+      onAddRule(ruleData);
     }
-
     setEditingRule(null);
-    setTitle('');
-    setAmount('');
     setShowModal(false);
   };
 
-  // IDs of rules active on the currently hovered chart point
-  const activeHoverRuleIds = React.useMemo(() => {
+  const archivedCount = useMemo(() => {
+    return rules.filter((r) => isRuleArchived(r, forecastStartDate)).length;
+  }, [rules, forecastStartDate]);
+
+  const activeHoverRuleIds = useMemo(() => {
     if (!activeHoverPoint || !activeHoverPoint.transactions) return new Set<string>();
     return new Set(activeHoverPoint.transactions.map((tx) => tx.ruleId));
   }, [activeHoverPoint]);
 
-  const hasChartHover = activeHoverRuleIds.size > 0;
+  const displayedRules = useMemo(() => {
+    const filtered = rules.filter((rule) => {
+      const archived = isRuleArchived(rule, forecastStartDate);
+      if (!isFullPage && archived) return false;
+      if (isFullPage && !showArchived && archived) return false;
 
-  // Move rules active on the hovered chart point to the top of the list,
-  // reverting to original ordering as soon as cursor leaves the chart
-  const displayedRules = React.useMemo(() => {
-    if (!hasChartHover) {
-      return rules;
-    }
-    const matching: TransactionRule[] = [];
-    const others: TransactionRule[] = [];
-    for (const rule of rules) {
-      if (activeHoverRuleIds.has(rule.id)) {
-        matching.push(rule);
-      } else {
-        others.push(rule);
+      if (isFullPage && flowFilter !== 'ALL' && rule.type !== flowFilter) {
+        return false;
       }
+
+      if (isFullPage && searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchTitle = rule.title.toLowerCase().includes(q);
+        const matchCp = (rule.counterpartyName || '').toLowerCase().includes(q);
+        const matchInn = (rule.counterpartyInn || '').toLowerCase().includes(q);
+        if (!matchTitle && !matchCp && !matchInn) return false;
+      }
+
+      return true;
+    });
+
+    if (isFullPage && showArchived) {
+      return [...filtered].sort((a, b) => {
+        const archA = isRuleArchived(a, forecastStartDate) ? 1 : 0;
+        const archB = isRuleArchived(b, forecastStartDate) ? 1 : 0;
+        return archA - archB;
+      });
     }
-    return [...matching, ...others];
-  }, [rules, hasChartHover, activeHoverRuleIds]);
+    return filtered;
+  }, [rules, forecastStartDate, isFullPage, showArchived, flowFilter, searchQuery]);
+
+  const activeNonArchivedCount = useMemo(
+    () => rules.filter((r) => !isRuleArchived(r, forecastStartDate)).length,
+    [rules, forecastStartDate]
+  );
+
+  const handleStartAddCp = () => {
+    setEditingCp(null);
+    setCpName('');
+    setCpInn('');
+    setCpType('VENDOR');
+    setCpContract('');
+    setCpAccount('');
+    setIsAddingCp(true);
+  };
+
+  const handleStartEditCp = (cp: Counterparty) => {
+    setEditingCp(cp);
+    setCpName(cp.name);
+    setCpInn(cp.inn || '');
+    setCpType(cp.type);
+    setCpContract(cp.contract || '');
+    setCpAccount(cp.accountNumber || '');
+    setIsAddingCp(true);
+  };
+
+  const handleSaveCp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cpName.trim()) return;
+    if (editingCp && onUpdateCounterparty) {
+      onUpdateCounterparty({
+        ...editingCp,
+        name: cpName.trim(),
+        inn: cpInn.trim() || undefined,
+        type: cpType,
+        contract: cpContract.trim() || undefined,
+        accountNumber: cpAccount.trim() || undefined,
+      });
+    } else if (onAddCounterparty) {
+      onAddCounterparty({
+        name: cpName.trim(),
+        inn: cpInn.trim() || undefined,
+        type: cpType,
+        contract: cpContract.trim() || undefined,
+        accountNumber: cpAccount.trim() || undefined,
+      });
+    }
+    setIsAddingCp(false);
+    setEditingCp(null);
+  };
 
   return (
-    <div
-      className={`bg-white rounded-xl shadow-2xs border border-slate-200 overflow-hidden transition-all duration-200 ${
-        !isCollapsed ? 'flex-1 flex flex-col min-h-0' : ''
-      }`}
-    >
-      {/* Header */}
-      <div
-        onClick={onToggleCollapse}
-        className={`px-4 sm:px-6 py-3 sm:py-3.5 border-b border-slate-200 flex justify-between items-center bg-slate-50 transition cursor-pointer select-none hover:bg-slate-100/90 shrink-0 ${
-          isCollapsed ? 'border-b-0' : ''
-        }`}
-      >
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-2 text-slate-800">
-            <h3 className="font-semibold text-sm sm:text-base">
-              Финансовые правила и обязательства
-            </h3>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200/80 font-mono text-slate-600 font-medium">
-              {rules.length}
-            </span>
-          </div>
-
-          {hasChartHover && activeHoverPoint && (
-            <span className="hidden md:inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium border border-blue-200">
-              Выделены на {activeHoverPoint.date} (перемещены наверх)
-            </span>
+    <div className="bg-white border border-gray-400">
+      {/* верхняя панель с кнопками */}
+      <div className="px-3 py-2 bg-[#f5f5f5] border-b border-gray-400 flex flex-wrap justify-between items-center gap-2 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isFullPage ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setSubTab('rules')}
+                className={`px-3 py-1 border text-xs font-bold cursor-pointer ${
+                  subTab === 'rules'
+                    ? 'bg-[#337ab7] text-white border-[#204d74]'
+                    : 'bg-white text-gray-700 border-gray-400 hover:bg-gray-100'
+                }`}
+              >
+                Реестр правил и транзакций ({activeNonArchivedCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSubTab('counterparties')}
+                className={`px-3 py-1 border text-xs font-bold cursor-pointer ${
+                  subTab === 'counterparties'
+                    ? 'bg-[#337ab7] text-white border-[#204d74]'
+                    : 'bg-white text-gray-700 border-gray-400 hover:bg-gray-100'
+                }`}
+              >
+                Справочник контрагентов ({counterparties.length})
+              </button>
+            </div>
+          ) : (
+            <div className="font-bold text-gray-800 text-xs sm:text-sm">
+              Действующие финансовые правила и обязательства (записей: {activeNonArchivedCount})
+            </div>
           )}
         </div>
 
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={handleOpenAddModal}
-            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs sm:text-sm font-medium transition shadow-2xs cursor-pointer"
-          >
-            <Plus size={15} /> <span>Добавить</span>
-          </button>
+        <div className="flex items-center gap-2">
+          {/* галочка показать архив */}
+          {isFullPage && subTab === 'rules' && (
+            <label className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-400 text-xs cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                className="cursor-pointer"
+              />
+              <span>Показать архив ({archivedCount})</span>
+            </label>
+          )}
 
-          <button
-            onClick={onToggleCollapse}
-            className="p-1.5 px-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition cursor-pointer flex items-center gap-1 text-xs font-medium"
-            title={isCollapsed ? 'Развернуть список правил' : 'Свернуть список правил'}
-          >
-            {isCollapsed ? (
-              <>
-                <ChevronDown size={15} className="text-slate-600" />
-                <span className="hidden sm:inline">Развернуть</span>
-              </>
-            ) : (
-              <>
-                <ChevronUp size={15} className="text-slate-600" />
-                <span className="hidden sm:inline">Свернуть</span>
-              </>
-            )}
-          </button>
+          {subTab === 'rules' ? (
+            <button
+              onClick={handleOpenAddModal}
+              className="px-3 py-1 bg-[#337ab7] hover:bg-[#286090] border border-[#204d74] text-white text-xs font-bold cursor-pointer"
+            >
+              + Добавить операцию
+            </button>
+          ) : (
+            <button
+              onClick={handleStartAddCp}
+              className="px-3 py-1 bg-[#337ab7] hover:bg-[#286090] border border-[#204d74] text-white text-xs font-bold cursor-pointer"
+            >
+              + Добавить контрагента
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Rules Table with Dedicated Inner Scroll & Sticky Headers */}
-      {!isCollapsed && (
-        <div className="flex-1 overflow-y-auto overflow-x-auto min-h-0">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead className="sticky top-0 z-10 bg-slate-100 shadow-2xs">
-              <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                <th className="w-12 pl-4 pr-2 py-2.5 text-center bg-slate-100">Статус</th>
-                <th className="px-5 py-2.5 bg-slate-100">Название</th>
-                <th className="px-5 py-2.5 bg-slate-100">Сумма</th>
-                <th className="px-5 py-2.5 bg-slate-100">Периодичность / Дата</th>
-                <th className="px-5 py-2.5 bg-slate-100">Категория</th>
-                <th className="px-5 py-2.5 text-right bg-slate-100">Действия</th>
-              </tr>
-            </thead>
-            <tbody
-              className="divide-y divide-slate-100 font-sans"
-              onMouseLeave={() => onHoverRuleChange?.(null)}
-            >
-            {displayedRules.map((rule) => {
-              const isExpense = rule.type === 'EXPENSE';
-              const isPointHovered = activeHoverRuleIds.has(rule.id);
-              const isRuleHovered = hoveredRuleId === rule.id;
+      {/* поиск и фильтр по типу */}
+      {isFullPage && subTab === 'rules' && (
+        <div className="p-2.5 bg-gray-50 border-b border-gray-300 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 flex-1 min-w-[220px] max-w-md">
+            <span className="font-bold text-gray-700">Поиск:</span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Назначение, контрагент, ИНН..."
+              className="w-full px-2 py-1 bg-white border border-gray-400 text-xs focus:outline-none"
+            />
+          </div>
 
-              // Fixed 4px left border prevents layout shift while providing strong color cues
-              let rowStyle = 'border-l-4 transition-all duration-150 cursor-pointer ';
-
-              if (hasChartHover) {
-                if (isPointHovered) {
-                  // Active on the hovered chart point: prominent, moved to top, distinct type color
-                  if (isExpense) {
-                    rowStyle += 'bg-rose-100/90 border-l-rose-600 font-medium text-slate-900 opacity-100 shadow-xs ring-1 ring-rose-300/70';
-                  } else {
-                    rowStyle += 'bg-emerald-100/90 border-l-emerald-600 font-medium text-slate-900 opacity-100 shadow-xs ring-1 ring-emerald-300/70';
-                  }
-                } else {
-                  // Other rules are grayed out / dimmed
-                  rowStyle += 'bg-slate-50/40 border-l-transparent opacity-25 grayscale text-slate-400 select-none';
-                }
-              } else {
-                if (!rule.active) {
-                  rowStyle += 'border-l-transparent opacity-40 bg-slate-50 text-slate-400';
-                } else if (isRuleHovered) {
-                  if (isExpense) {
-                    rowStyle += 'bg-rose-100/80 border-l-rose-600 text-slate-900 shadow-2xs';
-                  } else {
-                    rowStyle += 'bg-emerald-100/80 border-l-emerald-600 text-slate-900 shadow-2xs';
-                  }
-                } else {
-                  // Subtle tinted background for Income (green) and Expense (red)
-                  if (isExpense) {
-                    rowStyle += 'bg-rose-50/45 hover:bg-rose-50/80 border-l-rose-500 text-slate-800';
-                  } else {
-                    rowStyle += 'bg-emerald-50/45 hover:bg-emerald-50/80 border-l-emerald-500 text-slate-800';
-                  }
-                }
-              }
-
-              return (
-                <tr
-                  key={rule.id}
-                  onMouseEnter={() => onHoverRuleChange?.(rule.id)}
-                  className={rowStyle}
-                >
-                  <td className="w-12 pl-4 pr-2 py-3.5 text-center">
-                    <input
-                      type="checkbox"
-                      checked={rule.active}
-                      onChange={() => onToggleRule(rule.id)}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                  </td>
-                  <td className="px-5 py-3.5 font-medium text-slate-900">
-                    <div className="flex items-center gap-2">
-                      <span>{rule.title}</span>
-                      {rule.source !== 'MANUAL' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 font-normal">
-                          {rule.source}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 font-semibold">
-                    <span className={`inline-flex items-center gap-1 font-mono ${isExpense ? 'text-rose-600' : 'text-emerald-600'}`}>
-                      {isExpense ? <ArrowDownRight size={14} className="shrink-0" /> : <ArrowUpRight size={14} className="shrink-0" />}
-                      {isExpense ? '-' : '+'}
-                      {rule.amount.toLocaleString('ru-RU')} ₽
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    {rule.recurrence === 'RECURRING' ? (
-                      <div className="flex flex-col text-xs">
-                        <span className="flex items-center gap-1 text-slate-800 font-medium">
-                          <Repeat size={13} className="text-blue-500" />
-                          Каждое {rule.dayOfMonth}-е число
-                        </span>
-                        {rule.endDate && (
-                          <span className="text-[11px] text-slate-400">
-                            до {rule.endDate} (сплит/кредит)
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col text-xs">
-                        <span className="flex items-center gap-1 text-slate-700">
-                          <Calendar size={13} className="text-amber-500" />
-                          Разово: {rule.date}
-                        </span>
-                        {rule.date && ((forecastStartDate && rule.date < forecastStartDate) || (forecastEndDate && rule.date > forecastEndDate)) && (
-                          <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-medium mt-0.5 inline-block w-fit">
-                            ⚠️ вне периода графика ({forecastStartDate} – {forecastEndDate})
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-white/70 border border-slate-200/60 text-slate-700 shadow-2xs">
-                      <Tag size={11} />
-                      {rule.category === 'CREDIT' ? 'Кредиты/Сплиты' : 'Обычное'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <button
-                        onClick={() => handleStartEdit(rule)}
-                        className="text-slate-400 hover:text-blue-600 transition p-1.5 rounded hover:bg-white/80 cursor-pointer"
-                        title="Редактировать правило"
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        onClick={() => onDeleteRule(rule.id)}
-                        className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded hover:bg-white/80 cursor-pointer"
-                        title="Удалить правило"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+          <div className="flex items-center gap-1">
+            <span className="text-gray-600 mr-1">Фильтр:</span>
+            {(['ALL', 'INCOME', 'EXPENSE'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFlowFilter(f)}
+                className={`px-2.5 py-1 border text-xs cursor-pointer ${
+                  flowFilter === f
+                    ? 'bg-gray-700 text-white border-gray-800 font-bold'
+                    : 'bg-white text-gray-700 border-gray-400 hover:bg-gray-100'
+                }`}
+              >
+                {f === 'ALL' ? 'Все' : f === 'INCOME' ? 'Приход (+)' : 'Списание (-)'}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
-      {/* Modal dialog for adding or editing rule */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-100">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-              <h4 className="font-semibold text-slate-800">
-                {editingRule ? 'Редактирование правила' : 'Новое финансовое правило (PYM Rule)'}
-              </h4>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                  Название транзакции / обязательства
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Например: Аренда квартиры, Зарплата, Сплит Яндекс"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Сумма (₽)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    placeholder="35000"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Поток денег
-                  </label>
-                  <select
-                    value={type}
-                    onChange={(e) => setType(e.target.value as TransactionType)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  >
-                    <option value="EXPENSE">Расход (-)</option>
-                    <option value="INCOME">Доход (+)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Тип правила
-                  </label>
-                  <select
-                    value={recurrence}
-                    onChange={(e) => setRecurrence(e.target.value as RecurrenceType)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  >
-                    <option value="ONCE">ONCE (Разовый)</option>
-                    <option value="RECURRING">RECURRING (Циклический)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Категория
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  >
-                    <option value="COMMON">Обычное (COMMON)</option>
-                    <option value="CREDIT">Кредит / Сплит (CREDIT)</option>
-                  </select>
-                </div>
-              </div>
-
-              {recurrence === 'ONCE' ? (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Дата события (start_date)
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
+      {/* таблица правил */}
+      {subTab === 'rules' && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-[#eeeeee] text-gray-800 font-bold border-b border-gray-400">
+                <th className="w-10 p-2 text-center border-r border-gray-300">Вкл</th>
+                <th className="p-2 border-r border-gray-300">Назначение операции</th>
+                <th className="p-2 border-r border-gray-300">Контрагент / Счет</th>
+                <th className="p-2 border-r border-gray-300">Сумма (руб.)</th>
+                <th className="p-2 border-r border-gray-300">Периодичность / Дата</th>
+                <th className="p-2 border-r border-gray-300">Статья ДДС</th>
+                <th className="p-2 text-center">Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayedRules.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-6 text-center text-gray-500">
+                    Записи не найдены.
+                  </td>
+                </tr>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                      День месяца (1-31)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={31}
-                      required
-                      value={dayOfMonth}
-                      onChange={(e) => setDayOfMonth(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                      Дата окончания (end_date)
-                    </label>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      placeholder="Бессрочно"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    />
-                    <span className="text-[10px] text-slate-400">Пусто = бесконечно</span>
-                  </div>
-                </div>
-              )}
+                displayedRules.map((rule) => {
+                  const isExpense = rule.type === 'EXPENSE';
+                  const archived = isRuleArchived(rule, forecastStartDate);
+                  const isPointHovered = activeHoverRuleIds.has(rule.id);
+                  const isRuleHovered = hoveredRuleId === rule.id;
 
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+                  let rowBg = 'bg-white hover:bg-gray-50';
+                  if (archived) {
+                    rowBg = 'bg-[#e2e3e5] text-gray-500';
+                  } else if (isPointHovered || isRuleHovered) {
+                    rowBg = 'bg-[#d9edf7]';
+                  } else if (!rule.active) {
+                    rowBg = 'bg-gray-100 text-gray-400';
+                  }
+
+                  return (
+                    <tr
+                      key={rule.id}
+                      onMouseEnter={() => !archived && onHoverRuleChange?.(rule.id)}
+                      onMouseLeave={() => onHoverRuleChange?.(null)}
+                      className={`border-b border-gray-300 ${rowBg}`}
+                    >
+                      <td className="p-2 text-center border-r border-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={rule.active && !archived}
+                          disabled={archived}
+                          onChange={() => onToggleRule(rule.id)}
+                          className="cursor-pointer"
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-300">
+                        <span className={archived ? 'line-through text-gray-500' : 'font-medium text-gray-900'}>
+                          {rule.title}
+                        </span>
+                        {archived && (
+                          <span className="ml-2 px-1.5 py-0.5 bg-gray-400 text-white text-[10px] font-bold uppercase">
+                            архив
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2 border-r border-gray-300">
+                        <div>
+                          {rule.counterpartyName ? (
+                            <span>
+                              {rule.counterpartyName}
+                              {rule.counterpartyInn ? ` (ИНН ${rule.counterpartyInn})` : ''}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </div>
+                        {rule.accountName && (
+                          <div className="text-[11px] text-gray-500">{rule.accountName}</div>
+                        )}
+                      </td>
+                      <td className="p-2 border-r border-gray-300 font-mono font-bold whitespace-nowrap">
+                        <span
+                          className={
+                            archived
+                              ? 'text-gray-500'
+                              : isExpense
+                              ? 'text-[#a94442]'
+                              : 'text-[#3c763d]'
+                          }
+                        >
+                          {isExpense ? '-' : '+'}
+                          {rule.amount.toLocaleString('ru-RU')} ₽
+                        </span>
+                      </td>
+                      <td className="p-2 border-r border-gray-300 whitespace-nowrap">
+                        <div>{formatRecurrenceLabel(rule)}</div>
+                        {rule.recurrence === 'RECURRING' && (rule.startDate || rule.endDate) && (
+                          <div className="text-[10px] text-gray-500">
+                            {rule.startDate ? `с ${rule.startDate} ` : ''}
+                            {rule.endDate ? `до ${rule.endDate}` : ''}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-2 border-r border-gray-300 whitespace-nowrap">
+                        {formatCategoryLabel(rule.category)}
+                      </td>
+                      <td className="p-2 text-center whitespace-nowrap">
+                        <button
+                          onClick={() => handleStartEdit(rule)}
+                          className="px-2 py-0.5 mr-1 bg-gray-100 hover:bg-gray-200 border border-gray-400 text-gray-800 text-[11px] cursor-pointer"
+                        >
+                          Изм.
+                        </button>
+                        <button
+                          onClick={() => onDeleteRule(rule.id)}
+                          className="px-2 py-0.5 bg-[#f2dede] hover:bg-[#ebccd1] border border-[#ebccd1] text-[#a94442] text-[11px] cursor-pointer"
+                        >
+                          Удал.
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* вкладка со списком контрагентов */}
+      {subTab === 'counterparties' && (
+        <div className="p-3 space-y-3">
+          {isAddingCp && (
+            <form
+              onSubmit={handleSaveCp}
+              className="p-3 bg-gray-100 border border-gray-400 space-y-3 text-xs"
+            >
+              <div className="font-bold text-gray-800">
+                {editingCp ? 'Редактирование контрагента' : 'Добавление контрагента в БД'}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Наименование *:</label>
+                  <input
+                    type="text"
+                    required
+                    value={cpName}
+                    onChange={(e) => setCpName(e.target.value)}
+                    placeholder="ООО «Яндекс.Облако»"
+                    className="w-full px-2 py-1 bg-white border border-gray-400 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">ИНН:</label>
+                  <input
+                    type="text"
+                    value={cpInn}
+                    onChange={(e) => setCpInn(e.target.value)}
+                    placeholder="7704357909"
+                    className="w-full px-2 py-1 bg-white border border-gray-400 text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Тип:</label>
+                  <select
+                    value={cpType}
+                    onChange={(e) => setCpType(e.target.value as CounterpartyType)}
+                    className="w-full px-2 py-1 bg-white border border-gray-400 text-xs"
+                  >
+                    <option value="VENDOR">Поставщик / Подрядчик</option>
+                    <option value="CLIENT">Заказчик / Плательщик</option>
+                    <option value="BANK">Банк / Эквайринг</option>
+                    <option value="TAX">Госорган / ФНС</option>
+                    <option value="INTERNAL">Внутренний реестр</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Договор:</label>
+                  <input
+                    type="text"
+                    value={cpContract}
+                    onChange={(e) => setCpContract(e.target.value)}
+                    placeholder="Договор № 15 от 01.02.2026"
+                    className="w-full px-2 py-1 bg-white border border-gray-400 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Расчетный счет:</label>
+                  <input
+                    type="text"
+                    value={cpAccount}
+                    onChange={(e) => setCpAccount(e.target.value)}
+                    placeholder="40702810..."
+                    className="w-full px-2 py-1 bg-white border border-gray-400 text-xs font-mono"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-md text-sm font-medium hover:bg-slate-50 transition"
+                  onClick={() => setIsAddingCp(false)}
+                  className="px-3 py-1 bg-white border border-gray-400 text-gray-700 text-xs cursor-pointer"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium transition shadow-sm"
+                  className="px-3 py-1 bg-[#337ab7] text-white border border-[#204d74] text-xs font-bold cursor-pointer"
                 >
-                  {editingRule ? 'Сохранить изменения' : 'Сохранить в базу'}
+                  Сохранить
                 </button>
               </div>
             </form>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse border border-gray-400">
+              <thead>
+                <tr className="bg-[#eeeeee] text-gray-800 font-bold border-b border-gray-400">
+                  <th className="p-2 border-r border-gray-300">Наименование контрагента</th>
+                  <th className="p-2 border-r border-gray-300">ИНН</th>
+                  <th className="p-2 border-r border-gray-300">Роль</th>
+                  <th className="p-2 border-r border-gray-300">Договор</th>
+                  <th className="p-2 border-r border-gray-300">Расчетный счет</th>
+                  <th className="p-2 text-center">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {counterparties.map((cp) => (
+                  <tr key={cp.id} className="border-b border-gray-300 hover:bg-gray-50">
+                    <td className="p-2 border-r border-gray-300 font-bold text-gray-900">
+                      {cp.name}
+                    </td>
+                    <td className="p-2 border-r border-gray-300 font-mono">{cp.inn || '—'}</td>
+                    <td className="p-2 border-r border-gray-300">
+                      {formatCounterpartyType(cp.type)}
+                    </td>
+                    <td className="p-2 border-r border-gray-300">{cp.contract || '—'}</td>
+                    <td className="p-2 border-r border-gray-300 font-mono">
+                      {cp.accountNumber || '—'}
+                    </td>
+                    <td className="p-2 text-center whitespace-nowrap">
+                      <button
+                        onClick={() => handleStartEditCp(cp)}
+                        className="px-2 py-0.5 mr-1 bg-gray-100 hover:bg-gray-200 border border-gray-400 text-gray-800 text-[11px] cursor-pointer"
+                      >
+                        Изм.
+                      </button>
+                      {onDeleteCounterparty && (
+                        <button
+                          onClick={() => onDeleteCounterparty(cp.id)}
+                          className="px-2 py-0.5 bg-[#f2dede] hover:bg-[#ebccd1] border border-[#ebccd1] text-[#a94442] text-[11px] cursor-pointer"
+                        >
+                          Удал.
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
+
+      <RuleModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        onSaveRule={handleSaveFromModal}
+        editingRule={editingRule}
+        prefillData={prefillData}
+        defaultDate={defaultDate}
+        forecastStartDate={forecastStartDate}
+        forecastEndDate={forecastEndDate}
+        counterparties={counterparties}
+        onAddCounterparty={onAddCounterparty}
+      />
     </div>
   );
 };

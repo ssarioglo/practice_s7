@@ -1,181 +1,132 @@
 import React from 'react';
 import { DailyPoint } from '../types/finance.ts';
-import {
-  Calendar,
-  AlertTriangle,
-  ArrowUpRight,
-  ArrowDownRight,
-  CheckCircle2,
-  Plus,
-  X,
-  Wallet,
-  Tag,
-} from 'lucide-react';
 
 interface DaySliceModalProps {
-  point: DailyPoint;
+  isOpen: boolean;
   onClose: () => void;
-  onAddTransaction: (point: DailyPoint) => void;
+  dayData: DailyPoint | null;
+  onAddTransaction: (date: string) => void;
 }
 
 export const DaySliceModal: React.FC<DaySliceModalProps> = ({
-  point,
+  isOpen,
   onClose,
+  dayData,
   onAddTransaction,
 }) => {
+  if (!isOpen || !dayData) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-100">
-      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-              <Calendar size={18} />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-900 text-base">
-                Финансовый срез на {point.date}
-              </h3>
-              <p className="text-xs text-slate-500">
-                День недели: {point.dayOfWeek} (день #{point.dayIndex + 1} в горизонте планирования)
-              </p>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white border-2 border-gray-500 shadow-md w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[#337ab7] text-white border-b border-gray-500">
+          <div>
+            <h3 className="text-sm font-bold">
+              Выписка за {dayData.date} ({dayData.dayOfWeek})
+            </h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 text-lg p-1"
+            className="text-white hover:text-gray-200 font-bold text-sm px-1 cursor-pointer"
           >
-            <X size={18} />
+            [X]
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-5">
-          {/* Cash gap indicator if below zero */}
-          {point.isCashGap ? (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-900 flex items-start gap-3">
-              <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
-              <div className="text-xs">
-                <div className="font-bold">Обнаружен кассовый разрыв (Cash Gap)!</div>
-                <div className="text-rose-700 mt-0.5">
-                  Баланс опустился ниже нуля на{' '}
-                  <strong className="font-mono font-bold">
-                    {point.gapDeficit.toLocaleString('ru-RU')} ₽
-                  </strong>
-                  . Требуется перенос платежей или привлечение ликвидности.
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 flex items-center gap-2 text-xs">
-              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-              <span>Остаток в пределах нормы, ликвидность стабильна.</span>
-            </div>
-          )}
+        <div className="p-4 bg-[#f5f5f5] text-xs space-y-3">
+          <table className="w-full border-collapse border border-gray-400 bg-white">
+            <tbody>
+              <tr className="border-b border-gray-300">
+                <td className="p-2 font-bold text-gray-700 border-r border-gray-300">
+                  Входящий остаток (утро):
+                </td>
+                <td className="p-2 text-right font-mono font-bold text-gray-900">
+                  {dayData.openingBalance.toLocaleString('ru-RU')} руб.
+                </td>
+              </tr>
+              <tr className="border-b border-gray-300">
+                <td className="p-2 font-bold text-gray-700 border-r border-gray-300">
+                  Приход за день (+):
+                </td>
+                <td className="p-2 text-right font-mono font-bold text-[#3c763d]">
+                  +{dayData.incomeTotal.toLocaleString('ru-RU')} руб.
+                </td>
+              </tr>
+              <tr className="border-b border-gray-300">
+                <td className="p-2 font-bold text-gray-700 border-r border-gray-300">
+                  Списание за день (-):
+                </td>
+                <td className="p-2 text-right font-mono font-bold text-[#a94442]">
+                  -{dayData.expenseTotal.toLocaleString('ru-RU')} руб.
+                </td>
+              </tr>
+              <tr className={dayData.isCashGap ? 'bg-[#f2dede]' : 'bg-[#eeeeee]'}>
+                <td className="p-2 font-bold text-gray-800 border-r border-gray-300">
+                  Исходящий остаток (вечер):
+                </td>
+                <td
+                  className={`p-2 text-right font-mono font-bold ${
+                    dayData.isCashGap ? 'text-[#a94442]' : 'text-gray-900'
+                  }`}
+                >
+                  {dayData.closingBalance.toLocaleString('ru-RU')} руб.
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
-          {/* Balance breakdown grid */}
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="text-slate-500 mb-1">Входящий остаток (Start):</div>
-              <div className="font-mono font-bold text-slate-800 text-base">
-                {point.openingBalance.toLocaleString('ru-RU')} ₽
-              </div>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="text-slate-500 mb-1">Итоговый остаток (End):</div>
-              <div
-                className={`font-mono font-bold text-base ${
-                  point.closingBalance < 0 ? 'text-rose-600' : 'text-slate-900'
-                }`}
-              >
-                {point.closingBalance.toLocaleString('ru-RU')} ₽
-              </div>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="text-slate-500 mb-1 flex items-center gap-1 text-emerald-700">
-                <ArrowUpRight size={13} /> Поступления за день:
-              </div>
-              <div className="font-mono font-bold text-emerald-600 text-sm">
-                +{point.incomeTotal.toLocaleString('ru-RU')} ₽
-              </div>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="text-slate-500 mb-1 flex items-center gap-1 text-rose-700">
-                <ArrowDownRight size={13} /> Списания за день:
-              </div>
-              <div className="font-mono font-bold text-rose-600 text-sm">
-                -{point.expenseTotal.toLocaleString('ru-RU')} ₽
-              </div>
-            </div>
-          </div>
-
-          {/* Transactions list on this day */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">
-              События и транзакции дня ({point.transactions.length})
-            </h4>
-
-            {point.transactions.length > 0 ? (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {point.transactions.map((tx, idx) => (
-                  <div
-                    key={idx}
-                    className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center text-xs"
-                  >
+            <div className="font-bold text-gray-800 mb-1.5">
+              Операции за дату ({dayData.transactions.length}):
+            </div>
+            {dayData.transactions.length === 0 ? (
+              <div className="p-3 bg-white border border-gray-400 text-center text-gray-500">
+                Операций на этот день не запланировано.
+              </div>
+            ) : (
+              <div className="bg-white border border-gray-400 max-h-48 overflow-y-auto divide-y divide-gray-300">
+                {dayData.transactions.map((tx, idx) => (
+                  <div key={idx} className="p-2 flex items-center justify-between">
                     <div>
-                      <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                        <span>{tx.title}</span>
-                        {tx.source !== 'MANUAL' && (
-                          <span className="text-[10px] px-1 py-0.5 bg-blue-100 text-blue-800 rounded font-normal">
-                            {tx.source}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                        <Tag size={10} />
-                        <span>Категория: {tx.category}</span>
-                      </div>
+                      <div className="font-bold text-gray-900">{tx.title}</div>
+                      {tx.counterpartyName && (
+                        <div className="text-[11px] text-gray-600">{tx.counterpartyName}</div>
+                      )}
                     </div>
-
-                    <div
-                      className={`font-mono font-bold text-sm ${
-                        tx.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'
+                    <span
+                      className={`font-mono font-bold ${
+                        tx.type === 'INCOME' ? 'text-[#3c763d]' : 'text-[#a94442]'
                       }`}
                     >
                       {tx.type === 'INCOME' ? '+' : '-'}
-                      {tx.amount.toLocaleString('ru-RU')} ₽
-                    </div>
+                      {tx.amount.toLocaleString('ru-RU')} руб.
+                    </span>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center text-slate-400 text-xs italic">
-                В этот день запланированных списаний и поступлений нет.
-              </div>
             )}
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-          <button
-            onClick={() => {
-              onClose();
-              onAddTransaction(point);
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-medium transition shadow-xs"
-          >
-            <Plus size={14} /> Добавить транзакцию на эту дату
-          </button>
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 border border-slate-300 text-slate-700 rounded-md text-xs font-medium hover:bg-slate-100 transition"
-          >
-            Закрыть
-          </button>
+          <div className="pt-2 border-t border-gray-400 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-800 border border-gray-400 font-medium cursor-pointer"
+            >
+              Закрыть
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onAddTransaction(dayData.date);
+              }}
+              className="px-3 py-1.5 bg-[#337ab7] hover:bg-[#286090] text-white font-bold border border-[#2e6da4] cursor-pointer"
+            >
+              + Добавить операцию на эту дату
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -1,320 +1,488 @@
 import React, { useState, useEffect } from 'react';
-import { TransactionRule, TransactionType, RecurrenceType } from '../types/finance.ts';
-import { Plus, Pencil, X, Calendar, AlertCircle } from 'lucide-react';
+import {
+  TransactionRule,
+  TransactionType,
+  RecurrenceType,
+  RecurrenceInterval,
+  Counterparty,
+  CounterpartyType,
+} from '../types/finance.ts';
 
 interface RuleModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveRule: (ruleData: Omit<TransactionRule, 'id'>, existingId?: string) => void;
   editingRule?: TransactionRule | null;
-  prefillData?: {
-    date?: string;
-    type?: TransactionType;
-    title?: string;
-  } | null;
+  prefillData?: { date?: string; type?: TransactionType; title?: string } | null;
   defaultDate?: string;
   forecastStartDate?: string;
   forecastEndDate?: string;
+  counterparties?: Counterparty[];
+  onAddCounterparty?: (cp: Omit<Counterparty, 'id'>) => Counterparty;
 }
+
+export const CORPORATE_ACCOUNTS = [
+  'Р/с ••4812 (СберБизнес — Основной)',
+  'Р/с ••9045 (Альфа-Банк — Эквайринг)',
+  'Депозит ••1104 (Резервный фонд)',
+];
 
 export const RuleModal: React.FC<RuleModalProps> = ({
   isOpen,
   onClose,
   onSaveRule,
-  editingRule = null,
-  prefillData = null,
+  editingRule,
+  prefillData,
   defaultDate = '2026-10-24',
   forecastStartDate,
   forecastEndDate,
+  counterparties = [],
+  onAddCounterparty,
 }) => {
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [recurrence, setRecurrence] = useState<RecurrenceType>('ONCE');
-  const [category, setCategory] = useState('COMMON');
-  const [date, setDate] = useState(() => defaultDate || '2026-10-24');
-  const [dayOfMonth, setDayOfMonth] = useState(() => {
-    const d = defaultDate ? parseInt(defaultDate.split('-')[2] || '24', 10) : 24;
-    return String(d);
-  });
-  const [endDate, setEndDate] = useState('');
+  const [intervalType, setIntervalType] = useState<RecurrenceInterval>('MONTH');
+  const [customIntervalDays, setCustomIntervalDays] = useState('3');
+  const [category, setCategory] = useState('OPERATIONAL');
+  const [counterpartyId, setCounterpartyId] = useState('');
+  const [accountName, setAccountName] = useState(CORPORATE_ACCOUNTS[0]);
+  const [date, setDate] = useState(defaultDate);
+  const [dayOfMonth, setDayOfMonth] = useState('10');
   const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
-  // Sync state when modal opens or editingRule/prefillData changes
+  const [isCreatingCp, setIsCreatingCp] = useState(false);
+  const [newCpName, setNewCpName] = useState('');
+  const [newCpInn, setNewCpInn] = useState('');
+  const [newCpType, setNewCpType] = useState<CounterpartyType>('VENDOR');
+
   useEffect(() => {
     if (!isOpen) return;
+    setIsCreatingCp(false);
 
     if (editingRule) {
       setTitle(editingRule.title);
       setAmount(String(editingRule.amount));
       setType(editingRule.type);
       setRecurrence(editingRule.recurrence);
-      setCategory(editingRule.category || 'COMMON');
-      setDate(editingRule.date || defaultDate || '2026-10-24');
+      setIntervalType(editingRule.intervalType || 'MONTH');
+      setCustomIntervalDays(String(editingRule.customIntervalDays || 3));
+      setCategory(editingRule.category || 'OPERATIONAL');
+      setCounterpartyId(editingRule.counterpartyId || '');
+      setAccountName(editingRule.accountName || CORPORATE_ACCOUNTS[0]);
+      setDate(editingRule.date || defaultDate);
       setDayOfMonth(String(editingRule.dayOfMonth || 10));
-      setEndDate(editingRule.endDate || '');
       setStartDate(editingRule.startDate || '');
+      setEndDate(editingRule.endDate || '');
     } else if (prefillData) {
+      const targetDate = prefillData.date || defaultDate;
       setTitle(prefillData.title || '');
       setAmount('');
       setType(prefillData.type || 'EXPENSE');
       setRecurrence('ONCE');
-      setCategory('COMMON');
-      const targetDate = prefillData.date || defaultDate || '2026-10-24';
+      setIntervalType('MONTH');
+      setCustomIntervalDays('3');
+      setCategory('OPERATIONAL');
+      setCounterpartyId('');
+      setAccountName(CORPORATE_ACCOUNTS[0]);
       setDate(targetDate);
-      const day = parseInt(targetDate.split('-')[2] || '24', 10);
+      const day = parseInt(targetDate.split('-')[2] || '10', 10);
       setDayOfMonth(String(day));
-      setEndDate('');
       setStartDate('');
+      setEndDate('');
     } else {
       setTitle('');
       setAmount('');
       setType('EXPENSE');
       setRecurrence('ONCE');
-      setCategory('COMMON');
-      const targetDate = defaultDate || '2026-10-24';
-      setDate(targetDate);
-      const day = parseInt(targetDate.split('-')[2] || '24', 10);
+      setIntervalType('MONTH');
+      setCustomIntervalDays('3');
+      setCategory('OPERATIONAL');
+      setCounterpartyId('');
+      setAccountName(CORPORATE_ACCOUNTS[0]);
+      setDate(defaultDate);
+      const day = parseInt(defaultDate.split('-')[2] || '10', 10);
       setDayOfMonth(String(day));
-      setEndDate('');
       setStartDate('');
+      setEndDate('');
     }
   }, [isOpen, editingRule, prefillData, defaultDate]);
 
   if (!isOpen) return null;
+
+  const handleQuickAddCounterparty = () => {
+    if (!newCpName.trim() || !onAddCounterparty) return;
+    const created = onAddCounterparty({
+      name: newCpName.trim(),
+      inn: newCpInn.trim() || undefined,
+      type: newCpType,
+      defaultCategory: category,
+    });
+    setCounterpartyId(created.id);
+    setNewCpName('');
+    setNewCpInn('');
+    setIsCreatingCp(false);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const parsedAmount = Math.abs(parseFloat(amount) || 0);
     if (!title.trim() || parsedAmount <= 0) return;
 
-    const ruleData: Omit<TransactionRule, 'id'> = {
-      title: title.trim(),
-      amount: parsedAmount,
-      type,
-      recurrence,
-      category,
-      source: editingRule?.source || 'MANUAL',
-      active: editingRule ? editingRule.active : true,
-      date: recurrence === 'ONCE' ? date : undefined,
-      dayOfMonth: recurrence === 'RECURRING' ? parseInt(dayOfMonth, 10) : undefined,
-      startDate: recurrence === 'RECURRING' && startDate ? startDate : undefined,
-      endDate: recurrence === 'RECURRING' && endDate ? endDate : undefined,
-    };
+    const selectedCp = counterparties.find((c) => c.id === counterpartyId);
+    const parsedCustomDays = Math.max(1, parseInt(customIntervalDays, 10) || 2);
 
-    onSaveRule(ruleData, editingRule?.id);
+    onSaveRule(
+      {
+        title: title.trim(),
+        amount: parsedAmount,
+        type,
+        recurrence,
+        category,
+        source: editingRule ? editingRule.source : 'MANUAL',
+        counterpartyId: selectedCp ? selectedCp.id : undefined,
+        counterpartyName: selectedCp ? selectedCp.name : editingRule?.counterpartyName,
+        counterpartyInn: selectedCp ? selectedCp.inn : editingRule?.counterpartyInn,
+        accountName,
+        date: recurrence === 'ONCE' ? date : undefined,
+        intervalType: recurrence === 'RECURRING' ? intervalType : undefined,
+        customIntervalDays:
+          recurrence === 'RECURRING' && intervalType === 'CUSTOM_DAYS'
+            ? parsedCustomDays
+            : undefined,
+        dayOfMonth:
+          recurrence === 'RECURRING' && intervalType === 'MONTH'
+            ? Math.min(31, Math.max(1, parseInt(dayOfMonth, 10) || 1))
+            : undefined,
+        startDate:
+          recurrence === 'RECURRING'
+            ? startDate || (intervalType !== 'MONTH' ? forecastStartDate || defaultDate : undefined)
+            : undefined,
+        endDate: recurrence === 'RECURRING' && endDate ? endDate : undefined,
+        active: editingRule ? editingRule.active : true,
+      },
+      editingRule?.id
+    );
+
     onClose();
   };
 
-  const isOutOfRange =
-    recurrence === 'ONCE' &&
-    date &&
-    ((forecastStartDate && date < forecastStartDate) || (forecastEndDate && date > forecastEndDate));
+  const isWillBeArchived =
+    forecastStartDate &&
+    ((recurrence === 'ONCE' && date < forecastStartDate) ||
+      (recurrence === 'RECURRING' && endDate && endDate < forecastStartDate));
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
-        {/* Header */}
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                editingRule ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
-              }`}
-            >
-              {editingRule ? <Pencil size={18} /> : <Plus size={18} />}
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-800 text-base">
-                {editingRule ? 'Редактировать правило / операцию' : 'Создать правило / операцию'}
-              </h3>
-              <p className="text-xs text-slate-500">
-                {editingRule ? 'Изменение параметров в модели cash flow' : 'Добавление транзакции в финансовый прогноз'}
-              </p>
-            </div>
-          </div>
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white border border-gray-500 shadow-md w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* шапка модалки */}
+        <div className="px-4 py-2.5 bg-[#337ab7] text-white flex justify-between items-center border-b border-gray-400">
+          <h4 className="font-bold text-sm">
+            {editingRule ? 'Редактирование операции' : 'Добавление новой операции'}
+          </h4>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition"
+            className="text-white hover:text-gray-200 font-bold text-sm px-1 cursor-pointer"
           >
-            <X size={18} />
+            ✕
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        {/* форма */}
+        <form onSubmit={handleSubmit} className="p-4 space-y-3 overflow-y-auto flex-1 text-xs">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-              Название операции
+            <label className="block font-bold text-gray-700 mb-1">
+              Назначение операции / Основание:
             </label>
             <input
               type="text"
               required
-              placeholder="Например: Зарплата, Ипотека, Покупка оборудования"
+              placeholder="Напр., Оплата аренды серверов или Выручка по эквайрингу"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+              className="w-full px-2.5 py-1.5 border border-gray-400 text-xs focus:outline-none focus:border-[#337ab7]"
               autoFocus
             />
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-bold text-gray-700">Контрагент:</label>
+                {onAddCounterparty && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingCp(!isCreatingCp)}
+                    className="text-[11px] text-[#337ab7] underline cursor-pointer"
+                  >
+                    {isCreatingCp ? 'Отмена' : '+ Добавить нового'}
+                  </button>
+                )}
+              </div>
+              <select
+                value={counterpartyId}
+                onChange={(e) => setCounterpartyId(e.target.value)}
+                className="w-full px-2 py-1.5 border border-gray-400 bg-white text-xs"
+              >
+                <option value="">— Не выбран —</option>
+                {counterparties.map((cp) => (
+                  <option key={cp.id} value={cp.id}>
+                    {cp.name} {cp.inn ? `(ИНН ${cp.inn})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Расчетный счет:</label>
+              <select
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+                className="w-full px-2 py-1.5 border border-gray-400 bg-white text-xs"
+              >
+                {CORPORATE_ACCOUNTS.map((acc) => (
+                  <option key={acc} value={acc}>
+                    {acc}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {isCreatingCp && (
+            <div className="p-2.5 bg-gray-100 border border-gray-300 space-y-2">
+              <div className="font-bold text-gray-800">Новый контрагент в справочник:</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input
+                  type="text"
+                  placeholder="Наименование (ООО / АО)"
+                  value={newCpName}
+                  onChange={(e) => setNewCpName(e.target.value)}
+                  className="sm:col-span-2 px-2 py-1 bg-white border border-gray-400 text-xs"
+                />
+                <input
+                  type="text"
+                  placeholder="ИНН"
+                  value={newCpInn}
+                  onChange={(e) => setNewCpInn(e.target.value)}
+                  className="px-2 py-1 bg-white border border-gray-400 text-xs font-mono"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <select
+                  value={newCpType}
+                  onChange={(e) => setNewCpType(e.target.value as CounterpartyType)}
+                  className="px-2 py-1 bg-white border border-gray-400 text-xs"
+                >
+                  <option value="VENDOR">Поставщик</option>
+                  <option value="CLIENT">Плательщик / Заказчик</option>
+                  <option value="BANK">Банк</option>
+                  <option value="TAX">ФНС / Госорган</option>
+                  <option value="INTERNAL">Внутренний реестр</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={handleQuickAddCounterparty}
+                  className="px-3 py-1 bg-[#337ab7] text-white text-xs font-bold cursor-pointer"
+                >
+                  Сохранить контрагента
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Сумма (₽)
-              </label>
+              <label className="block font-bold text-gray-700 mb-1">Сумма (руб.):</label>
               <input
                 type="number"
                 step="0.01"
                 min="0.01"
                 required
-                placeholder="45 000"
+                placeholder="50000"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono font-semibold transition shadow-2xs"
+                className="w-full px-2.5 py-1.5 border border-gray-400 text-xs font-mono font-bold"
               />
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Поток денег
-              </label>
+              <label className="block font-bold text-gray-700 mb-1">Тип операции:</label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as TransactionType)}
-                className={`w-full px-3.5 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none transition shadow-2xs ${
-                  type === 'INCOME'
-                    ? 'border-emerald-300 bg-emerald-50/50 text-emerald-800'
-                    : 'border-rose-300 bg-rose-50/50 text-rose-800'
-                }`}
+                className="w-full px-2 py-1.5 border border-gray-400 bg-white text-xs font-bold"
               >
-                <option value="EXPENSE">Расход (-)</option>
-                <option value="INCOME">Доход (+)</option>
+                <option value="EXPENSE">Списание / Расход (-)</option>
+                <option value="INCOME">Приход / Поступление (+)</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Периодичность
-              </label>
+              <label className="block font-bold text-gray-700 mb-1">Характер операции:</label>
               <select
                 value={recurrence}
                 onChange={(e) => setRecurrence(e.target.value as RecurrenceType)}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                className="w-full px-2 py-1.5 border border-gray-400 bg-white text-xs"
               >
-                <option value="ONCE">Разово (в указанную дату)</option>
-                <option value="RECURRING">Ежемесячно (циклическое)</option>
+                <option value="ONCE">Разовая (в конкретную дату)</option>
+                <option value="RECURRING">Циклическая (периодическая)</option>
               </select>
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Категория
-              </label>
+              <label className="block font-bold text-gray-700 mb-1">Статья ДДС:</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                className="w-full px-2 py-1.5 border border-gray-400 bg-white text-xs"
               >
-                <option value="COMMON">Обычное (COMMON)</option>
-                <option value="CREDIT">Кредит / Долг / Ипотека (CREDIT)</option>
-                <option value="BUSINESS">Бизнес / Налоги</option>
-                <option value="LIVING">Жизнь / Быт</option>
+                <option value="OPERATIONAL">Операционная (OpEx)</option>
+                <option value="PAYROLL">ФОТ и персонал</option>
+                <option value="TAX">Налоги и сборы</option>
+                <option value="INVESTMENT">Инвестиционная (CapEx)</option>
+                <option value="FINANCIAL">Финансовая / Кредиты</option>
               </select>
             </div>
           </div>
 
           {recurrence === 'ONCE' ? (
             <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                  Дата события
-                </label>
-                {forecastStartDate && forecastEndDate && (
-                  <span className="text-[11px] text-slate-400">
-                    Период: {forecastStartDate} – {forecastEndDate}
-                  </span>
-                )}
-              </div>
+              <label className="block font-bold text-gray-700 mb-1">
+                Дата проведения операции:
+              </label>
               <input
                 type="date"
                 required
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer font-medium"
+                className="w-full px-2.5 py-1.5 border border-gray-400 text-xs"
               />
-              {isOutOfRange && (
-                <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
-                  <AlertCircle size={14} className="shrink-0" />
-                  <span>
-                    Дата находится вне диапазона активного прогноза ({forecastStartDate} – {forecastEndDate}).
-                  </span>
+              {isWillBeArchived && (
+                <div className="mt-1.5 p-2 bg-gray-100 border border-gray-400 text-gray-700 text-[11px]">
+                  Внимание: выбранная дата ({date}) ранее даты «Старт» ({forecastStartDate}). Запись будет помечена как <strong>«Архив»</strong>.
                 </div>
               )}
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2.5">
+            <div className="p-3 bg-gray-100 border border-gray-300 space-y-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Число (1–31)
+                  <label className="block font-bold text-gray-700 mb-1">
+                    Периодичность:
                   </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    required
-                    value={dayOfMonth}
-                    onChange={(e) => setDayOfMonth(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono font-medium transition shadow-2xs"
-                  />
+                  <div className="flex items-center border border-gray-400 bg-white">
+                    <span className="px-2 py-1.5 bg-gray-200 border-r border-gray-400 font-bold text-gray-800 whitespace-nowrap">
+                      Раз в:
+                    </span>
+                    <select
+                      value={intervalType}
+                      onChange={(e) => setIntervalType(e.target.value as RecurrenceInterval)}
+                      className="w-full px-2 py-1.5 bg-white text-xs focus:outline-none"
+                    >
+                      <option value="MONTH">месяц</option>
+                      <option value="WEEK">неделю</option>
+                      <option value="BIWEEKLY">2 недели</option>
+                      <option value="YEAR">год</option>
+                      <option value="CUSTOM_DAYS">произвольно</option>
+                    </select>
+                  </div>
                 </div>
+
+                {intervalType === 'CUSTOM_DAYS' ? (
+                  <div>
+                    <label className="block font-bold text-gray-700 mb-1">
+                      Через сколько дней повторяется:
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      required
+                      value={customIntervalDays}
+                      onChange={(e) => setCustomIntervalDays(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white border border-gray-400 text-xs font-mono font-bold"
+                    />
+                  </div>
+                ) : intervalType === 'MONTH' ? (
+                  <div>
+                    <label className="block font-bold text-gray-700 mb-1">
+                      Число месяца (1–31):
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      required
+                      value={dayOfMonth}
+                      onChange={(e) => setDayOfMonth(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white border border-gray-400 text-xs font-mono"
+                    />
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-gray-600 py-1">
+                    Отсчет ведется от даты начала цикла.
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Старт (необязат.)
+                  <label className="block font-bold text-gray-700 mb-1">
+                    Дата начала:
                   </label>
                   <input
                     type="date"
+                    required={intervalType !== 'MONTH'}
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-2.5 py-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
-                    title="С какого месяца активировать правило"
+                    className="w-full px-2 py-1 bg-white border border-gray-400 text-xs"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Окончание
+                  <label className="block font-bold text-gray-700 mb-1">
+                    Дата окончания (необяз.):
                   </label>
                   <input
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-2.5 py-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
-                    placeholder="Бессрочно"
-                    title="Дата окончания выплат (например, закрытие кредита)"
+                    className="w-full px-2 py-1 bg-white border border-gray-400 text-xs"
                   />
                 </div>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Правило будет повторяться каждый месяц {dayOfMonth}-го числа в заданном диапазоне дат.
-              </p>
+
+              {isWillBeArchived && (
+                <div className="p-2 bg-gray-200 border border-gray-400 text-gray-700 text-[11px]">
+                  Дата окончания ({endDate}) ранее даты «Старт» ({forecastStartDate}). Правило будет помещено в <strong>«Архив»</strong>.
+                </div>
+              )}
             </div>
           )}
 
-          {/* Action buttons */}
-          <div className="pt-4 border-t border-slate-200 flex justify-end gap-2.5">
+          <div className="pt-3 border-t border-gray-300 flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-100 transition cursor-pointer"
+              className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 border border-gray-400 text-gray-800 text-xs cursor-pointer"
             >
               Отмена
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm cursor-pointer"
+              className="px-4 py-1.5 bg-[#337ab7] hover:bg-[#286090] border border-[#204d74] text-white text-xs font-bold cursor-pointer"
             >
-              {editingRule ? 'Сохранить изменения' : 'Добавить операцию'}
+              {editingRule ? 'Сохранить' : 'Добавить'}
             </button>
           </div>
         </form>

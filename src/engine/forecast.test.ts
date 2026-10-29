@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runCashFlowForecast, getDaysInMonth } from './forecast.ts';
+import { runCashFlowForecast, getDaysInMonth, isRuleArchived } from './forecast.ts';
 import { TransactionRule } from '../types/finance.ts';
 
 test('getDaysInMonth handles regular and leap months', () => {
@@ -14,34 +14,36 @@ test('Predictor engine calculates recurring income and detects cash gap at 0 lim
   const rules: TransactionRule[] = [
     {
       id: '1',
-      title: 'Зарплата',
+      title: 'Выручка по эквайрингу',
       amount: 100000,
       type: 'INCOME',
       recurrence: 'RECURRING',
+      intervalType: 'MONTH',
       dayOfMonth: 10,
-      category: 'COMMON',
+      category: 'OPERATIONAL',
       source: 'MANUAL',
       active: true,
     },
     {
       id: '2',
-      title: 'Аренда жилья',
+      title: 'Аренда облачного ЦОД',
       amount: 80000,
       type: 'EXPENSE',
       recurrence: 'RECURRING',
+      intervalType: 'MONTH',
       dayOfMonth: 5,
-      category: 'COMMON',
+      category: 'OPERATIONAL',
       source: 'MANUAL',
       active: true,
     },
     {
       id: '3',
-      title: 'Крупная разовая покупка',
+      title: 'Закупка серверного оборудования',
       amount: 70000,
       type: 'EXPENSE',
       recurrence: 'ONCE',
       date: '2026-05-02',
-      category: 'COMMON',
+      category: 'INVESTMENT',
       source: 'MANUAL',
       active: true,
     },
@@ -67,17 +69,18 @@ test('Predictor engine calculates recurring income and detects cash gap at 0 lim
   assert.equal(result.summary.daysUntilGap, 1);
 });
 
-test('Recurring rule with endDate respects loan maturity', () => {
+test('Flexible recurrence intervals: WEEK, BIWEEKLY, CUSTOM_DAYS (every 3 days)', () => {
   const rules: TransactionRule[] = [
     {
-      id: '1',
-      title: 'Кредит авто',
-      amount: 15000,
-      type: 'EXPENSE',
+      id: 'custom-3d',
+      title: 'Зачисление по СБП (раз в 3 дня)',
+      amount: 10000,
+      type: 'INCOME',
       recurrence: 'RECURRING',
-      dayOfMonth: 15,
-      endDate: '2026-06-01', // Should not apply in June or later
-      category: 'CREDIT',
+      intervalType: 'CUSTOM_DAYS',
+      customIntervalDays: 3,
+      startDate: '2026-10-01',
+      category: 'OPERATIONAL',
       source: 'MANUAL',
       active: true,
     },
@@ -85,20 +88,30 @@ test('Recurring rule with endDate respects loan maturity', () => {
 
   const result = runCashFlowForecast(
     {
-      initialBalance: 50000,
-      startDate: '2026-05-01',
-      period: 60,
+      initialBalance: 0,
+      startDate: '2026-10-01',
+      period: 30,
     },
     rules
   );
 
-  // In May (index 14 = 2026-05-15) it should trigger
-  const mayPayment = result.points.find((p) => p.date === '2026-05-15');
-  assert.ok(mayPayment);
-  assert.equal(mayPayment.expenseTotal, 15000);
+  // In 30 days starting at day 0 with step 3: days 0, 3, 6, 9, 12, 15, 18, 21, 24, 27 -> 10 triggers
+  assert.equal(result.summary.totalIncome, 100000);
+});
 
-  // In June (2026-06-15) it should NOT trigger because endDate is 2026-06-01
-  const junePayment = result.points.find((p) => p.date === '2026-06-15');
-  assert.ok(junePayment);
-  assert.equal(junePayment.expenseTotal, 0);
+test('isRuleArchived identifies past rules before forecastStartDate', () => {
+  const pastOnce: TransactionRule = {
+    id: 'past-1',
+    title: 'Старый платеж',
+    amount: 50000,
+    type: 'EXPENSE',
+    recurrence: 'ONCE',
+    date: '2026-10-10',
+    category: 'OPERATIONAL',
+    source: 'MANUAL',
+    active: true,
+  };
+
+  assert.equal(isRuleArchived(pastOnce, '2026-10-24'), true);
+  assert.equal(isRuleArchived(pastOnce, '2026-10-01'), false);
 });

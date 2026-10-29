@@ -1,6 +1,6 @@
 {
   "name": "PYM - Plan Your Money (Cash Flow & Liquidity Predictor)",
-  "description": "SaaS/B2C веб-сервис краткосрочного прогнозирования ликвидности и предотвращения кассовых разрывов на 30–180 дней. Архитектура: React SB Admin 2, Java Spring Cloud Gateway, Go Clean Architecture, Python Predictor.",
+  "description": "Корпоративная система прогнозирования ликвидности, управления платежным календарем и предотвращения кассовых разрывов на горизонте 30–180 дней.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

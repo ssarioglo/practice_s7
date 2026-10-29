@@ -1,21 +1,41 @@
 export type TransactionType = 'INCOME' | 'EXPENSE';
 export type RecurrenceType = 'ONCE' | 'RECURRING';
-export type RuleSource = 'MANUAL' | 'TELEGRAM' | 'GOOGLE_CALENDAR';
+export type RecurrenceInterval = 'MONTH' | 'YEAR' | 'WEEK' | 'BIWEEKLY' | 'CUSTOM_DAYS';
+export type RuleSource = 'MANUAL' | 'API_JSON' | 'FILE_IMPORT' | 'TELEGRAM' | 'GOOGLE_CALENDAR';
+
+export type CounterpartyType = 'CLIENT' | 'VENDOR' | 'BANK' | 'TAX' | 'INTERNAL';
+
+export interface Counterparty {
+  id: string;
+  name: string;
+  inn?: string;
+  type: CounterpartyType;
+  defaultCategory?: string;
+  contract?: string;
+  accountNumber?: string;
+}
 
 export interface TransactionRule {
   id: string;
   title: string;
-  amount: number; // positive number in UI, inverted to negative for expenses when communicating with engine
+  amount: number; // в форме всегда плюс, минус ставится при расчете
   type: TransactionType;
   recurrence: RecurrenceType;
   category: string;
   source: RuleSource;
-  // For ONCE:
-  date?: string; // YYYY-MM-DD
-  // For RECURRING:
-  dayOfMonth?: number; // 1-31
-  startDate?: string; // YYYY-MM-DD (optional recurrence start date)
-  endDate?: string; // YYYY-MM-DD (e.g. loan payoff date)
+  // поля для контрагента и счета
+  counterpartyId?: string;
+  counterpartyName?: string;
+  counterpartyInn?: string;
+  accountName?: string;
+  // если разовая
+  date?: string;
+  // если циклическая
+  intervalType?: RecurrenceInterval;
+  customIntervalDays?: number; // кол-во дней для произвольного периода
+  dayOfMonth?: number;
+  startDate?: string;
+  endDate?: string;
   active: boolean;
 }
 
@@ -23,11 +43,17 @@ export interface EnrichedTransaction {
   ruleId: string;
   title: string;
   amount: number;
-  signedAmount: number; // positive for income, negative for expense
+  signedAmount: number;
   type: TransactionType;
   category: string;
   source: RuleSource;
+  counterpartyId?: string;
+  counterpartyName?: string;
+  counterpartyInn?: string;
+  accountName?: string;
   recurrence?: RecurrenceType;
+  intervalType?: RecurrenceInterval;
+  customIntervalDays?: number;
   dayOfMonth?: number;
   startDate?: string;
   endDate?: string;
@@ -35,17 +61,17 @@ export interface EnrichedTransaction {
 
 export interface DailyPoint {
   dayIndex: number;
-  date: string; // YYYY-MM-DD
-  formattedDate: string; // e.g., "12 нояб."
-  dayOfWeek: string; // "Пн", "Вт", ...
+  date: string;
+  formattedDate: string;
+  dayOfWeek: string;
   openingBalance: number;
   closingBalance: number;
   incomeTotal: number;
   expenseTotal: number;
   netChange: number;
   transactions: EnrichedTransaction[];
-  isCashGap: boolean; // closingBalance < 0
-  gapDeficit: number; // Math.abs(closingBalance) if < 0 else 0
+  isCashGap: boolean;
+  gapDeficit: number;
 }
 
 export interface ForecastSummary {
@@ -62,10 +88,10 @@ export interface ForecastSummary {
   totalIncome: number;
   totalExpense: number;
   hasCashGap: boolean;
-  daysUntilGap: number | null; // number of days from start until first cash gap, or null
+  daysUntilGap: number | null;
   firstGapDate: string | null;
-  maxDeficit: number; // worst deficit during period
-  gapDurationDays: number; // total days below 0
+  maxDeficit: number;
+  gapDurationDays: number;
 }
 
 export interface ForecastResult {
@@ -83,6 +109,7 @@ export interface UserProfile {
   id: number;
   email: string;
   fullName: string;
+  organizationName?: string;
   initialBalance: number;
   startDate: string;
   period: 30 | 60 | 90 | 180;
@@ -90,7 +117,6 @@ export interface UserProfile {
   autoTodayStart: boolean;
   currency: string;
   updatedAt: string;
-  // Chart Display Settings
   enableChartCollapse?: boolean;
   showCompactTooltip?: boolean;
 }
