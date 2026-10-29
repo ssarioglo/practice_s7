@@ -1,6 +1,0 @@
-{
-  "name": "PYM - Plan Your Money (Cash Flow & Liquidity Predictor)",
-  "description": "Корпоративная система прогнозирования ликвидности, управления платежным календарем и предотвращения кассовых разрывов на горизонте 30–180 дней.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

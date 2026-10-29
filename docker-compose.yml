@@ -8,21 +8,25 @@ services:
       POSTGRES_PASSWORD: pym_password
       POSTGRES_DB: pym_database
     ports:
-      - "9803:5432"
+      - "9803:5432" # порт наружу
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./PYM/init-db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init-db/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - pym-network
     restart: always
 
-  # админка для базы
+  # админка для бд
   pgadmin:
-    image: dpage/pgadmin4:8.5
+    build:
+      context: ./pgadmin
+      dockerfile: Dockerfile
     container_name: pym_pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@pym.ru
       PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
     ports:
       - "5050:80"
     volumes:
@@ -33,10 +37,10 @@ services:
       - pym_db
     restart: always
 
-  # питон сервис для расчета прогноза
+  # калькулятор на питоне
   pym-predictor:
     build:
-      context: ./PYM/pym-predictor
+      context: ./pym-predictor
       dockerfile: Dockerfile
     container_name: pym-predictor
     ports:
@@ -47,10 +51,10 @@ services:
       - pym_db
     restart: always
 
-  # сервис на го для работы с бд
+  # сервис данных на го
   pym-data-service:
     build:
-      context: ./PYM/pym-data-service
+      context: ./pym-data-service
       dockerfile: Dockerfile
     container_name: pym-data-service
     ports:
@@ -69,10 +73,10 @@ services:
       - pym-predictor
     restart: always
 
-  # гейтвей на джаве + авторизация
+  # гейтвей на джаве
   pym-gateway:
     build:
-      context: ./PYM/pym-gateway
+      context: ./pym-gateway
       dockerfile: Dockerfile
     container_name: pym-gateway
     ports:
@@ -87,10 +91,10 @@ services:
       - pym-data-service
     restart: always
 
-  # фронтенд на реакте + nginx
+  # фронт на реакте
   pym-frontend:
     build:
-      context: .
+      context: ./pym-frontend
       dockerfile: Dockerfile
     container_name: pym-frontend
     ports:
