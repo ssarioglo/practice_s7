@@ -7,3 +7,5 @@ coverage/
 .env*
 !.env.example
 public/assets/aistudio/*.zip
+.aistudio/
+.env.example
