@@ -67,11 +67,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     <div className="min-h-screen bg-[#e9ecef] flex flex-col justify-center items-center p-4 font-sans text-gray-800">
       <div className="w-full max-w-sm bg-white border border-gray-400 shadow-xs">
         <div className="px-4 py-3 bg-[#337ab7] text-white border-b border-gray-400">
-          <div className="font-bold text-sm">
-            PYM — Система планирования ДДС и ликвидности
-          </div>
           <div className="text-xs text-blue-100">
-            Авторизация пользователя (PostgreSQL)
+            Авторизация пользователя
           </div>
         </div>
 
@@ -168,11 +165,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           </div>
 
           <div className="mt-3 pt-2 border-t border-gray-300 bg-gray-50 p-2 text-[11px] text-gray-600">
-            <div className="font-bold text-gray-700 mb-0.5">Тестовые учетные записи БД:</div>
-            <div>
-              • Логин: <code className="font-mono font-bold">sarioglo</code> / Пароль:{' '}
-              <code className="font-mono font-bold">123456</code>
-            </div>
+            <div className="font-bold text-gray-700 mb-0.5">Тестовая учетная запись:</div>
             <div>
               • Логин: <code className="font-mono font-bold">admin</code> / Пароль:{' '}
               <code className="font-mono font-bold">admin123</code>
